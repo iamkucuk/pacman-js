@@ -70,6 +70,7 @@ class ExperimentManager {
   }
 
   startSession() {
+    console.log('[ExperimentManager] 🟢 START SESSION CALLED');
     if (!this.userId) {
       throw new Error('User ID must be set before starting session');
     }
@@ -156,6 +157,9 @@ class ExperimentManager {
     console.log('[ExperimentManager] Pac-Man multiplier:', pacmanMultiplier);
     console.log('[ExperimentManager] Ghost multiplier:', ghostMultiplier);
 
+    // Store the config for retry if needed
+    this.pendingSpeedConfig = { pacmanMultiplier, ghostMultiplier, config };
+
     const event = new CustomEvent('speedConfigChanged', {
       detail: {
         pacmanMultiplier,
@@ -166,6 +170,16 @@ class ExperimentManager {
     
     window.dispatchEvent(event);
     console.log('[ExperimentManager] ✅ Speed config event dispatched');
+
+    // Also try direct application via gameCoordinator if available
+    if (window.gameCoordinator && window.gameCoordinator.speedController && window.gameCoordinator.speedController.isInitialized) {
+      console.log('[ExperimentManager] 🔄 Applying speeds directly as backup');
+      window.gameCoordinator.speedController.applySpeedConfiguration({
+        pacmanMultiplier,
+        ghostMultiplier,
+        config
+      });
+    }
   }
 
   logEvent(type, data = {}) {

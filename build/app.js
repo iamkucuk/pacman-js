@@ -1234,6 +1234,12 @@ class GameCoordinator {
     this.speedController = new SpeedController();
     this.metricsCollector = new MetricsCollector(this.experimentManager);
     
+    // Initialize SpeedController immediately if entities already exist
+    if (this.pacman && this.ghosts) {
+      console.log('[GameCoordinator] 🚀 Entities already exist, initializing SpeedController immediately');
+      this.speedController.initialize(this);
+    }
+    
     // Set cross-references
     this.experimentManager.sessionManager = this.sessionManager;
     this.experimentManager.progressController = this.progressController;
@@ -1263,6 +1269,14 @@ class GameCoordinator {
       
       // Expose debug functions globally
       window.debugSpeeds = () => this.speedController.debugCurrentSpeeds();
+      window.testSpeeds = () => {
+        console.log('🧪 MANUAL SPEED TEST - Applying slow pacman, fast ghosts');
+        this.speedController.applySpeedConfiguration({
+          pacmanMultiplier: 0.3,
+          ghostMultiplier: 3.0,
+          config: { pacman: 'slow', ghost: 'fast' }
+        });
+      };
       
       console.log('[GameCoordinator] 📡 Experiment session started, SpeedController will initialize when game entities are ready');
     });
@@ -3560,6 +3574,7 @@ class ExperimentManager {
   }
 
   startSession() {
+    console.log('[ExperimentManager] 🟢 START SESSION CALLED');
     if (!this.userId) {
       throw new Error('User ID must be set before starting session');
     }
@@ -3646,6 +3661,9 @@ class ExperimentManager {
     console.log('[ExperimentManager] Pac-Man multiplier:', pacmanMultiplier);
     console.log('[ExperimentManager] Ghost multiplier:', ghostMultiplier);
 
+    // Store the config for retry if needed
+    this.pendingSpeedConfig = { pacmanMultiplier, ghostMultiplier, config };
+
     const event = new CustomEvent('speedConfigChanged', {
       detail: {
         pacmanMultiplier,
@@ -3656,6 +3674,16 @@ class ExperimentManager {
     
     window.dispatchEvent(event);
     console.log('[ExperimentManager] ✅ Speed config event dispatched');
+
+    // Also try direct application via gameCoordinator if available
+    if (window.gameCoordinator && window.gameCoordinator.speedController && window.gameCoordinator.speedController.isInitialized) {
+      console.log('[ExperimentManager] 🔄 Applying speeds directly as backup');
+      window.gameCoordinator.speedController.applySpeedConfiguration({
+        pacmanMultiplier,
+        ghostMultiplier,
+        config
+      });
+    }
   }
 
   logEvent(type, data = {}) {
@@ -6658,6 +6686,13 @@ class SpeedController {
     this.storeOriginalSpeeds();
     this.bindEvents();
     this.isInitialized = true;
+
+    // Check if there's a pending speed configuration from ExperimentManager
+    if (window.gameCoordinator && window.gameCoordinator.experimentManager && window.gameCoordinator.experimentManager.pendingSpeedConfig) {
+      console.log('[SpeedController] 🔄 Found pending speed config, applying now...');
+      const pending = window.gameCoordinator.experimentManager.pendingSpeedConfig;
+      this.applySpeedConfiguration(pending);
+    }
   }
 
   storeOriginalSpeeds() {

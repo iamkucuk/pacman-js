@@ -18,6 +18,13 @@ class SpeedController {
     this.storeOriginalSpeeds();
     this.bindEvents();
     this.isInitialized = true;
+
+    // Check if there's a pending speed configuration from ExperimentManager
+    if (window.gameCoordinator && window.gameCoordinator.experimentManager && window.gameCoordinator.experimentManager.pendingSpeedConfig) {
+      console.log('[SpeedController] 🔄 Found pending speed config, applying now...');
+      const pending = window.gameCoordinator.experimentManager.pendingSpeedConfig;
+      this.applySpeedConfiguration(pending);
+    }
   }
 
   storeOriginalSpeeds() {

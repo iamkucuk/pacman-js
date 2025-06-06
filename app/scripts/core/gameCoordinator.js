@@ -142,14 +142,6 @@ class GameCoordinator {
 
   bindExperimentEvents() {
     window.addEventListener('experimentSessionStarted', () => {
-      // Wait a bit for game to be ready, then initialize speed controller
-      setTimeout(() => {
-        if (this.speedController && !this.speedController.isInitialized) {
-          console.log('[GameCoordinator] 🚀 Initializing SpeedController with game entities');
-          this.speedController.initialize(this);
-        }
-      }, 2000); // Wait 2 seconds for game to be fully loaded
-      
       if (this.metricsCollector && !this.metricsCollector.isInitialized) {
         this.metricsCollector.initialize(this);
       }
@@ -161,6 +153,8 @@ class GameCoordinator {
       
       // Expose debug functions globally
       window.debugSpeeds = () => this.speedController.debugCurrentSpeeds();
+      
+      console.log('[GameCoordinator] 📡 Experiment session started, SpeedController will initialize when game entities are ready');
     });
   }
 
@@ -551,6 +545,16 @@ class GameCoordinator {
 
     this.scaredGhosts = [];
     this.eyeGhosts = 0;
+
+    // Notify that game entities are ready
+    console.log('[GameCoordinator] 🎮 Game entities created! Notifying SpeedController...');
+    if (this.speedController && !this.speedController.isInitialized) {
+      console.log('[GameCoordinator] 🚀 Initializing SpeedController NOW with ready entities');
+      this.speedController.initialize(this);
+    } else if (this.speedController && this.speedController.isInitialized) {
+      console.log('[GameCoordinator] 🔄 Entities recreated, storing original speeds');
+      this.speedController.storeOriginalSpeeds();
+    }
 
     if (this.firstGame) {
       this.drawMaze(this.mazeArray, this.entityList);

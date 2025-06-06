@@ -334,15 +334,83 @@ class ExperimentUI {
     const gameTime = this.experimentManager.gameStartTime ? 
       Math.floor((Date.now() - this.experimentManager.gameStartTime) / 1000) : 0;
     
+    // Get detailed breakdown of eaten items
+    const detailedStats = this.getDetailedEatenStats();
+    
     metricsDiv.innerHTML = `
       <strong>📊 Live Metrics</strong><br>
-      👻 Ghosts Eaten: ${metrics.summary.totalGhostsEaten}<br>
-      🔸 Pellets Eaten: ${metrics.summary.totalPelletsEaten}<br>
-      💀 Deaths: ${metrics.summary.totalDeaths}<br>
-      🔄 Successful Turns: ${metrics.summary.successfulTurns}/${metrics.summary.totalTurns}<br>
-      ⏱️ Game Time: ${gameTime}s<br>
-      📋 Total Events: ${metrics.events ? metrics.events.length : 0}
+      <strong>🍴 Eaten Items:</strong><br>
+      &nbsp;&nbsp;🔸 Pacdots: ${detailedStats.pacdots}<br>
+      &nbsp;&nbsp;⚡ Power Pellets: ${detailedStats.powerPellets}<br>
+      &nbsp;&nbsp;🍎 Fruits: ${detailedStats.fruits}<br>
+      &nbsp;&nbsp;👻 Ghosts: ${detailedStats.ghosts}<br>
+      <strong>📈 Game Stats:</strong><br>
+      &nbsp;&nbsp;💀 Deaths: ${metrics.summary.totalDeaths}<br>
+      &nbsp;&nbsp;🔄 Turns: ${metrics.summary.successfulTurns}/${metrics.summary.totalTurns}<br>
+      &nbsp;&nbsp;⏱️ Time: ${gameTime}s<br>
+      &nbsp;&nbsp;📋 Events: ${metrics.events ? metrics.events.length : 0}
     `;
+  }
+
+  getDetailedEatenStats() {
+    try {
+      if (!this.experimentManager || !this.experimentManager.currentMetrics) {
+        return {
+          pacdots: 0,
+          powerPellets: 0,
+          fruits: 0,
+          ghosts: 0,
+        };
+      }
+
+      const events = this.experimentManager.currentMetrics.events;
+      if (!events) {
+        return {
+          pacdots: 0,
+          powerPellets: 0,
+          fruits: 0,
+          ghosts: 0,
+        };
+      }
+
+      const stats = {
+        pacdots: 0,
+        powerPellets: 0,
+        fruits: 0,
+        ghosts: 0,
+      };
+
+      events.forEach((event) => {
+        // Check event type for pellets and ghosts
+        switch (event.type) {
+          case 'pacdot':
+            stats.pacdots += 1;
+            break;
+          case 'powerPellet':
+            stats.powerPellets += 1;
+            break;
+          case 'fruit':
+            stats.fruits += 1;
+            break;
+          case 'ghostEaten':
+            stats.ghosts += 1;
+            break;
+        }
+      });
+
+      return stats;
+    } catch (error) {
+      if (this.DEBUG) {
+        // eslint-disable-next-line no-console
+        console.warn('[ExperimentUI] Error getting detailed stats:', error);
+      }
+      return {
+        pacdots: 0,
+        powerPellets: 0,
+        fruits: 0,
+        ghosts: 0,
+      };
+    }
   }
 
   getGameCoordinatorMetrics() {

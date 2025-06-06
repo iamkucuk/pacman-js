@@ -169,7 +169,7 @@ class Ghost {
    */
   setSpriteSheet(name, direction, mode) {
     let emotion = '';
-    if (this.defaultSpeed !== this.slowSpeed) {
+    if (name === 'blinky' && this.defaultSpeed !== this.slowSpeed) {
       emotion = (this.defaultSpeed === this.mediumSpeed)
         ? '_annoyed' : '_angry';
     }

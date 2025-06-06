@@ -266,3 +266,39 @@ Added mandatory change logging requirements to ensure all codebase modifications
 - Verified format renders correctly in markdown
 
 ---
+
+### [2025-01-06] - Reorganized User ID Input Flow in Main Menu
+**Files Modified:** 
+- `index.html:33-62` - Added user ID input section and session info to main menu
+- `app/style/scss/mainPage.scss:205-389` - Created styled user ID interface with Pac-Man theme
+- `app/scripts/core/gameCoordinator.js:96-300` - Added user ID flow handling and session transitions
+- `app/scripts/experiment/experimentUI.js:28-122` - Converted to minimal debug-only interface
+- `build/app.css` - Compiled CSS with new styles
+- `build/app.js` - Compiled JavaScript with new functionality
+
+**Type:** Feature
+
+**Severity:** Medium
+
+**Description:**
+Moved user ID collection from floating interface to main menu for better UX. Users now enter their ID before seeing the PLAY button, creating a cleaner research experiment workflow.
+
+**Impact:**
+- Improved user experience flow - ID input comes before game button
+- Better visual integration with Pac-Man theme
+- Cleaner main menu interface without conflicting UI elements
+- Session information prominently displayed after confirmation
+- Mobile responsive design for new elements
+- Debug interface moved to top-right corner
+
+**Related Issues:**
+- User requested ID input before PLAY button appears
+- Addresses UX flow issues with overlapping interfaces
+
+**Testing:**
+- Manual testing of user ID input and validation
+- Session transition flow verified
+- Mobile responsive design tested
+- Integration with existing experiment system confirmed
+
+---

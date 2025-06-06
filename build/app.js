@@ -4208,10 +4208,10 @@ class ExperimentUI {
     }
 
     // Create a minimal debug-only interface since main menu handles user input
-    const baseStyle = 'position: fixed; top: 10px; right: 10px; z-index: 1000;';
-    const containerStyle = 'background: rgba(0,0,0,0.7); color: white; padding: 10px;';
-    const sizeStyle = 'border-radius: 5px; font-family: monospace; max-width: 300px;';
-    const fontStyle = 'font-size: 11px;';
+    const baseStyle = 'position: fixed; top: 10px; left: 10px; z-index: 1000;';
+    const containerStyle = 'background: rgba(0,0,0,0.8); color: white; padding: 12px;';
+    const sizeStyle = 'border-radius: 8px; font-family: monospace; max-width: 350px; min-width: 280px;';
+    const fontStyle = 'font-size: 12px; line-height: 1.4;';
     const showStyle = this.DEBUG ? '' : 'display: none;';
     
     const interfaceHTML = `
@@ -4220,12 +4220,18 @@ class ExperimentUI {
           <h4 style="margin: 0 0 5px 0; color: #ffff00; font-size: 12px;">
             Live Metrics
           </h4>
-          <div id="metrics-display" style="margin-bottom: 8px; font-size: 10px; background: rgba(0,0,0,0.3); padding: 6px; border-radius: 3px;">
+          <div id="session-info" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
           </div>
-          <button id="end-session-btn" style="width: 100%; padding: 4px; background: #ff4444; border: none; border-radius: 2px; cursor: pointer; font-size: 10px;">
+          <div id="speed-config" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          </div>
+          <div id="metrics-display" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          </div>
+          <div id="progress-info" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          </div>
+          <button id="end-session-btn" style="width: 100%; padding: 8px; background: #ff4444; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; color: white;">
             End Session
           </button>
-          <button id="export-data-btn" style="width: 100%; padding: 4px; background: #4444ff; border: none; border-radius: 2px; cursor: pointer; margin-top: 3px; font-size: 10px;">
+          <button id="export-data-btn" style="width: 100%; padding: 6px; background: #4444ff; border: none; border-radius: 4px; cursor: pointer; margin-top: 4px; font-size: 10px; color: white;">
             Export Data
           </button>
         </div>
@@ -4302,6 +4308,7 @@ class ExperimentUI {
 
     // Listen for experiment events to show/hide the interface
     window.addEventListener('experimentSessionStarted', () => {
+      console.log('[ExperimentUI] Session started event received');
       this.showSessionInterface();
     });
 
@@ -4317,17 +4324,29 @@ class ExperimentUI {
 
   handleEndSession() {
     try {
+      // End the current session in experiment manager
       this.experimentManager.endSession();
 
+      // Stop the game if it's running
+      if (window.gameCoordinator && window.gameCoordinator.gameEngine) {
+        window.gameCoordinator.gameEngine.stopGame();
+      }
+
+      // Check if experiment is complete
       const completedSessions = this.experimentManager.getCompletedSessionsCount();
       if (completedSessions >= 9) {
         this.showCompleteInterface();
+        window.dispatchEvent(new window.CustomEvent('experimentComplete'));
       } else {
-        this.showLoginInterface();
+        // Return to main menu for next session
+        this.hideAllInterfaces();
+        if (window.gameCoordinator) {
+          window.gameCoordinator.mainMenu.style.opacity = 1;
+          window.gameCoordinator.mainMenu.style.visibility = 'visible';
+        }
       }
 
       window.dispatchEvent(new window.CustomEvent('experimentSessionEnded'));
-
       this.stopMetricsDisplay();
     } catch (error) {
       console.error('Error ending session:', error);
@@ -4394,6 +4413,10 @@ class ExperimentUI {
     if (sessionDiv) {
       sessionDiv.style.display = 'block';
     }
+    
+    // Update all the session information and start metrics display
+    this.updateSessionDisplay();
+    this.startMetricsDisplay();
   }
 
   showCompleteInterface() {
@@ -4422,7 +4445,10 @@ class ExperimentUI {
     if (this.isTestEnvironment) return;
 
     const sessionInfo = this.experimentManager.getCurrentSessionInfo();
-    if (!sessionInfo) return;
+    if (!sessionInfo) {
+      console.warn('[ExperimentUI] No session info available');
+      return;
+    }
 
     const sessionInfoDiv = document.getElementById('session-info');
     const speedConfigDiv = document.getElementById('speed-config');
@@ -4485,14 +4511,17 @@ class ExperimentUI {
       return;
     }
 
+    const gameTime = this.experimentManager.gameStartTime ? 
+      Math.floor((Date.now() - this.experimentManager.gameStartTime) / 1000) : 0;
+    
     metricsDiv.innerHTML = `
-      <strong>Live Metrics:</strong><br>
-      Ghosts Eaten: ${metrics.summary.totalGhostsEaten}<br>
-      Pellets Eaten: ${metrics.summary.totalPelletsEaten}<br>
-      Deaths: ${metrics.summary.totalDeaths}<br>
-      Turns: ${metrics.summary.successfulTurns}/${metrics.summary.totalTurns}<br>
-      Consecutive: ${metrics.consecutiveTurns || 0}<br>
-      Events: ${metrics.events}
+      <strong>📊 Live Metrics</strong><br>
+      👻 Ghosts Eaten: ${metrics.summary.totalGhostsEaten}<br>
+      🔸 Pellets Eaten: ${metrics.summary.totalPelletsEaten}<br>
+      💀 Deaths: ${metrics.summary.totalDeaths}<br>
+      🔄 Successful Turns: ${metrics.summary.successfulTurns}/${metrics.summary.totalTurns}<br>
+      ⏱️ Game Time: ${gameTime}s<br>
+      📋 Total Events: ${metrics.events ? metrics.events.length : 0}
     `;
   }
 

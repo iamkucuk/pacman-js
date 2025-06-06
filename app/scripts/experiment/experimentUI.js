@@ -25,21 +25,48 @@ class ExperimentUI {
       existingInterface.remove();
     }
 
-    // Create a minimal debug-only interface since main menu now handles user input
+    // Create a minimal debug-only interface since main menu handles user input
+    const baseStyle = 'position: fixed; top: 10px; left: 10px; z-index: 1000;';
+    const containerStyle = 'background: rgba(0,0,0,0.8); color: white; padding: 12px;';
+    const sizeStyle = 'border-radius: 8px; font-family: monospace; max-width: 350px; min-width: 280px;';
+    const fontStyle = 'font-size: 12px; line-height: 1.4;';
+    const showStyle = this.DEBUG ? '' : 'display: none;';
+    
     const interfaceHTML = `
-      <div id="experiment-interface" style="position: fixed; top: 10px; right: 10px; z-index: 1000; background: rgba(0,0,0,0.7); color: white; padding: 10px; border-radius: 5px; font-family: monospace; max-width: 300px; font-size: 11px; ${this.DEBUG ? '' : 'display: none;'}">
+      <div id="experiment-interface" style="${baseStyle} ${containerStyle} ${sizeStyle} ${fontStyle} ${showStyle}">
         <div id="experiment-session" style="display: none;">
-          <h4 style="margin: 0 0 5px 0; color: #ffff00; font-size: 12px;">Live Metrics</h4>
-          <div id="metrics-display" style="margin-bottom: 8px; font-size: 10px; background: rgba(0,0,0,0.3); padding: 6px; border-radius: 3px;"></div>
-          <button id="end-session-btn" style="width: 100%; padding: 4px; background: #ff4444; border: none; border-radius: 2px; cursor: pointer; font-size: 10px;">End Session</button>
-          <button id="export-data-btn" style="width: 100%; padding: 4px; background: #4444ff; border: none; border-radius: 2px; cursor: pointer; margin-top: 3px; font-size: 10px;">Export Data</button>
+          <h4 style="margin: 0 0 5px 0; color: #ffff00; font-size: 12px;">
+            Live Metrics
+          </h4>
+          <div id="session-info" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          </div>
+          <div id="speed-config" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          </div>
+          <div id="metrics-display" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          </div>
+          <div id="progress-info" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          </div>
+          <button id="end-session-btn" style="width: 100%; padding: 8px; background: #ff4444; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; color: white;">
+            End Session
+          </button>
+          <button id="export-data-btn" style="width: 100%; padding: 6px; background: #4444ff; border: none; border-radius: 4px; cursor: pointer; margin-top: 4px; font-size: 10px; color: white;">
+            Export Data
+          </button>
         </div>
         
         <div id="experiment-complete" style="display: none;">
-          <h4 style="margin: 0 0 5px 0; color: #00ff00; font-size: 12px;">Experiment Complete!</h4>
-          <p style="margin: 0 0 8px 0; font-size: 10px;">All 9 sessions completed.</p>
-          <button id="export-final-data-btn" style="width: 100%; padding: 4px; background: #00ff00; border: none; border-radius: 2px; cursor: pointer; font-size: 10px;">Export Data</button>
-          <button id="reset-experiment-btn" style="width: 100%; padding: 4px; background: #ff4444; border: none; border-radius: 2px; cursor: pointer; margin-top: 3px; font-size: 10px;">Reset</button>
+          <h4 style="margin: 0 0 5px 0; color: #00ff00; font-size: 12px;">
+            Experiment Complete!
+          </h4>
+          <p style="margin: 0 0 8px 0; font-size: 10px;">
+            All 9 sessions completed.
+          </p>
+          <button id="export-final-data-btn" style="width: 100%; padding: 4px; background: #00ff00; border: none; border-radius: 2px; cursor: pointer; font-size: 10px;">
+            Export Data
+          </button>
+          <button id="reset-experiment-btn" style="width: 100%; padding: 4px; background: #ff4444; border: none; border-radius: 2px; cursor: pointer; margin-top: 3px; font-size: 10px;">
+            Reset
+          </button>
         </div>
 
         ${this.DEBUG ? this.createDebugPanel() : ''}
@@ -52,7 +79,6 @@ class ExperimentUI {
   showUserIdPrompt() {
     // User ID input is now handled by the main menu
     // This method kept for compatibility but does nothing
-    console.log('[ExperimentUI] User ID input is now handled by main menu');
   }
 
   createDebugPanel() {
@@ -92,12 +118,15 @@ class ExperimentUI {
     if (this.DEBUG) {
       const toggleDebugBtn = document.getElementById('toggle-debug');
       if (toggleDebugBtn) {
-        toggleDebugBtn.addEventListener('click', () => this.toggleDebugDetails());
+        toggleDebugBtn.addEventListener('click', () => {
+          this.toggleDebugDetails();
+        });
       }
     }
 
     // Listen for experiment events to show/hide the interface
     window.addEventListener('experimentSessionStarted', () => {
+      console.log('[ExperimentUI] Session started event received');
       this.showSessionInterface();
     });
 
@@ -113,17 +142,29 @@ class ExperimentUI {
 
   handleEndSession() {
     try {
+      // End the current session in experiment manager
       this.experimentManager.endSession();
 
+      // Stop the game if it's running
+      if (window.gameCoordinator && window.gameCoordinator.gameEngine) {
+        window.gameCoordinator.gameEngine.stopGame();
+      }
+
+      // Check if experiment is complete
       const completedSessions = this.experimentManager.getCompletedSessionsCount();
       if (completedSessions >= 9) {
         this.showCompleteInterface();
+        window.dispatchEvent(new window.CustomEvent('experimentComplete'));
       } else {
-        this.showLoginInterface();
+        // Return to main menu for next session
+        this.hideAllInterfaces();
+        if (window.gameCoordinator) {
+          window.gameCoordinator.mainMenu.style.opacity = 1;
+          window.gameCoordinator.mainMenu.style.visibility = 'visible';
+        }
       }
 
       window.dispatchEvent(new window.CustomEvent('experimentSessionEnded'));
-
       this.stopMetricsDisplay();
     } catch (error) {
       console.error('Error ending session:', error);
@@ -143,10 +184,14 @@ class ExperimentUI {
   }
 
   handleResetExperiment() {
-    if (window.confirm('Are you sure you want to reset the experiment? All data will be lost.')) {
+    const confirmMessage = 'Are you sure you want to reset the experiment? All data will be lost.';
+    // eslint-disable-next-line no-alert
+    if (window.confirm(confirmMessage)) {
       if (this.experimentManager.userId) {
-        localStorage.removeItem(`experiment_${this.experimentManager.userId}`);
-        localStorage.removeItem(`current_session_${this.experimentManager.userId}`);
+        const expKey = `experiment_${this.experimentManager.userId}`;
+        const sessionKey = `current_session_${this.experimentManager.userId}`;
+        localStorage.removeItem(expKey);
+        localStorage.removeItem(sessionKey);
       }
       window.location.reload();
     }
@@ -155,6 +200,7 @@ class ExperimentUI {
   downloadFile(filename, content) {
     if (this.isTestEnvironment) {
       // In test environment, just log the action
+      // eslint-disable-next-line no-console
       console.log(`[TEST] Would download file: ${filename}`);
       return;
     }
@@ -185,6 +231,10 @@ class ExperimentUI {
     if (sessionDiv) {
       sessionDiv.style.display = 'block';
     }
+    
+    // Update all the session information and start metrics display
+    this.updateSessionDisplay();
+    this.startMetricsDisplay();
   }
 
   showCompleteInterface() {
@@ -213,7 +263,10 @@ class ExperimentUI {
     if (this.isTestEnvironment) return;
 
     const sessionInfo = this.experimentManager.getCurrentSessionInfo();
-    if (!sessionInfo) return;
+    if (!sessionInfo) {
+      console.warn('[ExperimentUI] No session info available');
+      return;
+    }
 
     const sessionInfoDiv = document.getElementById('session-info');
     const speedConfigDiv = document.getElementById('speed-config');
@@ -276,14 +329,17 @@ class ExperimentUI {
       return;
     }
 
+    const gameTime = this.experimentManager.gameStartTime ? 
+      Math.floor((Date.now() - this.experimentManager.gameStartTime) / 1000) : 0;
+    
     metricsDiv.innerHTML = `
-      <strong>Live Metrics:</strong><br>
-      Ghosts Eaten: ${metrics.summary.totalGhostsEaten}<br>
-      Pellets Eaten: ${metrics.summary.totalPelletsEaten}<br>
-      Deaths: ${metrics.summary.totalDeaths}<br>
-      Turns: ${metrics.summary.successfulTurns}/${metrics.summary.totalTurns}<br>
-      Consecutive: ${metrics.consecutiveTurns || 0}<br>
-      Events: ${metrics.events}
+      <strong>📊 Live Metrics</strong><br>
+      👻 Ghosts Eaten: ${metrics.summary.totalGhostsEaten}<br>
+      🔸 Pellets Eaten: ${metrics.summary.totalPelletsEaten}<br>
+      💀 Deaths: ${metrics.summary.totalDeaths}<br>
+      🔄 Successful Turns: ${metrics.summary.successfulTurns}/${metrics.summary.totalTurns}<br>
+      ⏱️ Game Time: ${gameTime}s<br>
+      📋 Total Events: ${metrics.events ? metrics.events.length : 0}
     `;
   }
 

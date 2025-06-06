@@ -1221,6 +1221,45 @@ class GameCoordinator {
     link.onload = this.preloadAssets.bind(this);
 
     head.appendChild(link);
+    
+    this.initializeExperiment();
+  }
+
+  initializeExperiment() {
+    this.experimentManager = new ExperimentManager();
+    this.sessionManager = new SessionManager(this.experimentManager);
+    this.progressController = new ProgressController(this.experimentManager, this.sessionManager);
+    this.dataManager = new DataManager(this.experimentManager, this.sessionManager);
+    this.experimentUI = new ExperimentUI(this.experimentManager);
+    this.speedController = new SpeedController();
+    this.metricsCollector = new MetricsCollector(this.experimentManager);
+    
+    // Set cross-references
+    this.experimentManager.sessionManager = this.sessionManager;
+    this.experimentManager.progressController = this.progressController;
+    this.experimentManager.dataManager = this.dataManager;
+    
+    this.sessionManager.initialize();
+    this.progressController.initialize();
+    this.dataManager.initialize();
+    this.experimentUI.initialize();
+    this.bindExperimentEvents();
+  }
+
+  bindExperimentEvents() {
+    window.addEventListener('experimentSessionStarted', () => {
+      if (this.speedController && !this.speedController.isInitialized) {
+        this.speedController.initialize(this);
+      }
+      if (this.metricsCollector && !this.metricsCollector.isInitialized) {
+        this.metricsCollector.initialize(this);
+      }
+      if (this.experimentUI && this.metricsCollector) {
+        this.experimentUI.setMetricsCollector(this.metricsCollector);
+      }
+      
+      window.gameCoordinator = this;
+    });
   }
 
   /**
@@ -2567,6 +2606,2832 @@ class GameEngine {
    */
   mainLoop(timestamp) {
     this.engineCycle(timestamp);
+  }
+}
+
+
+class DataManager {
+  constructor(experimentManager, sessionManager) {
+    this.experimentManager = experimentManager;
+    this.sessionManager = sessionManager;
+    this.backupInterval = null;
+    this.compressionEnabled = true;
+    this.maxStorageSize = 50 * 1024 * 1024; // 50MB
+    this.isInitialized = false;
+    this.DEBUG = true;
+  }
+
+  initialize() {
+    if (this.isInitialized) return;
+    
+    this.setupAutoBackup();
+    this.checkStorageHealth();
+    this.bindEvents();
+    this.isInitialized = true;
+    
+    if (this.DEBUG) {
+      console.log('[DataManager] Initialized with auto-backup');
+    }
+  }
+
+  bindEvents() {
+    window.addEventListener('experimentSessionStarted', () => {
+      this.createSessionBackup();
+    });
+
+    window.addEventListener('experimentSessionEnded', () => {
+      this.createSessionBackup();
+      this.cleanupOldBackups();
+    });
+
+    window.addEventListener('beforeunload', () => {
+      this.createEmergencyBackup();
+    });
+
+    // Backup on significant events
+    window.addEventListener('awardPoints', () => {
+      this.deferredBackup();
+    });
+
+    window.addEventListener('deathSequence', () => {
+      this.createEventBackup('death');
+    });
+  }
+
+  setupAutoBackup() {
+    // Create backup every 2 minutes during active session
+    this.backupInterval = setInterval(() => {
+      if (this.experimentManager.isExperimentActive) {
+        this.createPeriodicBackup();
+      }
+    }, 2 * 60 * 1000);
+  }
+
+  createSessionBackup() {
+    try {
+      const backupData = this.gatherSessionData();
+      const compressed = this.compressData(backupData);
+      
+      const backupKey = `session_backup_${this.experimentManager.userId}_${Date.now()}`;
+      localStorage.setItem(backupKey, compressed);
+      
+      this.logBackup('session', backupKey, backupData);
+      return true;
+    } catch (error) {
+      console.error('[DataManager] Session backup failed:', error);
+      return false;
+    }
+  }
+
+  createPeriodicBackup() {
+    try {
+      const backupData = this.gatherLiveData();
+      const compressed = this.compressData(backupData);
+      
+      const backupKey = `periodic_backup_${this.experimentManager.userId}`;
+      localStorage.setItem(backupKey, compressed);
+      
+      if (this.DEBUG) {
+        console.log('[DataManager] Periodic backup created');
+      }
+      return true;
+    } catch (error) {
+      console.error('[DataManager] Periodic backup failed:', error);
+      return false;
+    }
+  }
+
+  createEventBackup(eventType) {
+    try {
+      const backupData = {
+        type: 'event_backup',
+        eventType,
+        timestamp: Date.now(),
+        currentSession: this.experimentManager.currentSession,
+        recentEvents: this.getRecentEvents(10)
+      };
+      
+      const compressed = this.compressData(backupData);
+      const backupKey = `event_backup_${eventType}_${this.experimentManager.userId}_${Date.now()}`;
+      
+      localStorage.setItem(backupKey, compressed);
+      this.logBackup('event', backupKey, backupData);
+      return true;
+    } catch (error) {
+      console.error('[DataManager] Event backup failed:', error);
+      return false;
+    }
+  }
+
+  createEmergencyBackup() {
+    try {
+      const backupData = {
+        type: 'emergency_backup',
+        timestamp: Date.now(),
+        reason: 'page_unload',
+        ...this.gatherCriticalData()
+      };
+      
+      const compressed = this.compressData(backupData);
+      localStorage.setItem(`emergency_backup_${this.experimentManager.userId}`, compressed);
+      
+      if (this.DEBUG) {
+        console.log('[DataManager] Emergency backup created');
+      }
+      return true;
+    } catch (error) {
+      console.error('[DataManager] Emergency backup failed:', error);
+      return false;
+    }
+  }
+
+  deferredBackup() {
+    // Debounced backup for frequent events
+    if (this.deferredBackupTimeout) {
+      clearTimeout(this.deferredBackupTimeout);
+    }
+    
+    this.deferredBackupTimeout = setTimeout(() => {
+      this.createPeriodicBackup();
+    }, 5000);
+  }
+
+  gatherSessionData() {
+    return {
+      type: 'session_backup',
+      timestamp: Date.now(),
+      userId: this.experimentManager.userId,
+      sessionOrder: this.experimentManager.sessionOrder,
+      metrics: this.experimentManager.metrics,
+      currentSession: this.experimentManager.currentSession,
+      sessionHistory: this.sessionManager.sessionHistory,
+      analytics: this.sessionManager.getSessionAnalytics()
+    };
+  }
+
+  gatherLiveData() {
+    return {
+      type: 'live_backup',
+      timestamp: Date.now(),
+      userId: this.experimentManager.userId,
+      currentSession: this.experimentManager.currentSession,
+      recentEvents: this.getRecentEvents(20),
+      sessionState: this.sessionManager.currentSessionData
+    };
+  }
+
+  gatherCriticalData() {
+    return {
+      userId: this.experimentManager.userId,
+      currentSession: this.experimentManager.currentSession,
+      completedSessions: this.experimentManager.getCompletedSessionsCount(),
+      sessionOrder: this.experimentManager.sessionOrder,
+      lastEvents: this.getRecentEvents(5)
+    };
+  }
+
+  getRecentEvents(count) {
+    if (!this.experimentManager.currentSession || !this.experimentManager.currentSession.events) {
+      return [];
+    }
+    
+    const events = this.experimentManager.currentSession.events;
+    return events.slice(-count);
+  }
+
+  compressData(data) {
+    if (!this.compressionEnabled) {
+      return JSON.stringify(data);
+    }
+    
+    try {
+      // Simple compression: remove whitespace and compress common patterns
+      const json = JSON.stringify(data);
+      const compressed = json
+        .replace(/\s+/g, ' ')
+        .replace(/","/g, '","')
+        .replace(/":"/g, '":"');
+      
+      return btoa(compressed); // Base64 encode
+    } catch (error) {
+      console.warn('[DataManager] Compression failed, using raw JSON');
+      return JSON.stringify(data);
+    }
+  }
+
+  decompressData(compressed) {
+    try {
+      // Try base64 decode first
+      const decoded = atob(compressed);
+      return JSON.parse(decoded);
+    } catch (error) {
+      // Fallback to direct JSON parse
+      try {
+        return JSON.parse(compressed);
+      } catch (parseError) {
+        console.error('[DataManager] Decompression failed:', parseError);
+        return null;
+      }
+    }
+  }
+
+  recoverFromBackup(backupType = 'latest') {
+    try {
+      const backups = this.listBackups();
+      
+      if (backups.length === 0) {
+        console.warn('[DataManager] No backups found for recovery');
+        return null;
+      }
+      
+      let targetBackup;
+      
+      switch (backupType) {
+        case 'latest':
+          targetBackup = backups[backups.length - 1];
+          break;
+        case 'session':
+          targetBackup = backups.find(b => b.type === 'session');
+          break;
+        case 'emergency':
+          targetBackup = backups.find(b => b.type === 'emergency');
+          break;
+        default:
+          targetBackup = backups.find(b => b.key === backupType);
+      }
+      
+      if (!targetBackup) {
+        console.warn('[DataManager] Backup type not found:', backupType);
+        return null;
+      }
+      
+      const backupData = this.loadBackup(targetBackup.key);
+      if (backupData) {
+        this.restoreFromBackupData(backupData);
+        console.log('[DataManager] Successfully recovered from backup:', targetBackup.key);
+        return backupData;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('[DataManager] Recovery failed:', error);
+      return null;
+    }
+  }
+
+  restoreFromBackupData(backupData) {
+    if (backupData.userId && backupData.userId !== this.experimentManager.userId) {
+      console.warn('[DataManager] Backup user ID mismatch');
+      return false;
+    }
+    
+    // Restore session order
+    if (backupData.sessionOrder) {
+      this.experimentManager.sessionOrder = backupData.sessionOrder;
+    }
+    
+    // Restore metrics
+    if (backupData.metrics) {
+      this.experimentManager.metrics = backupData.metrics;
+    }
+    
+    // Restore current session if valid
+    if (backupData.currentSession && this.isValidSession(backupData.currentSession)) {
+      this.experimentManager.currentSession = backupData.currentSession;
+      this.experimentManager.currentMetrics = backupData.currentSession;
+    }
+    
+    // Save restored data
+    this.experimentManager.saveUserData();
+    this.experimentManager.saveCurrentSession();
+    
+    return true;
+  }
+
+  isValidSession(session) {
+    return session && 
+           session.userId && 
+           session.sessionId && 
+           session.speedConfig && 
+           Array.isArray(session.events);
+  }
+
+  loadBackup(backupKey) {
+    try {
+      const compressed = localStorage.getItem(backupKey);
+      if (!compressed) {
+        return null;
+      }
+      
+      return this.decompressData(compressed);
+    } catch (error) {
+      console.error('[DataManager] Failed to load backup:', backupKey, error);
+      return null;
+    }
+  }
+
+  listBackups() {
+    const backups = [];
+    const userId = this.experimentManager.userId;
+    
+    if (!userId) return backups;
+    
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      
+      if (key && key.includes(`backup_${userId}`)) {
+        const timestamp = this.extractTimestampFromKey(key);
+        const type = this.extractTypeFromKey(key);
+        
+        backups.push({
+          key,
+          timestamp,
+          type,
+          age: Date.now() - timestamp
+        });
+      }
+    }
+    
+    return backups.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  extractTimestampFromKey(key) {
+    const match = key.match(/_(\d+)$/);
+    return match ? parseInt(match[1]) : 0;
+  }
+
+  extractTypeFromKey(key) {
+    if (key.includes('session_backup')) return 'session';
+    if (key.includes('periodic_backup')) return 'periodic';
+    if (key.includes('event_backup')) return 'event';
+    if (key.includes('emergency_backup')) return 'emergency';
+    return 'unknown';
+  }
+
+  cleanupOldBackups() {
+    try {
+      const backups = this.listBackups();
+      const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
+      const maxBackups = 50;
+      
+      // Remove old backups
+      const oldBackups = backups.filter(b => b.age > maxAge);
+      oldBackups.forEach(backup => {
+        localStorage.removeItem(backup.key);
+      });
+      
+      // Keep only latest backups if too many
+      const remainingBackups = backups.filter(b => b.age <= maxAge);
+      if (remainingBackups.length > maxBackups) {
+        const toRemove = remainingBackups
+          .slice(0, remainingBackups.length - maxBackups);
+        
+        toRemove.forEach(backup => {
+          localStorage.removeItem(backup.key);
+        });
+      }
+      
+      if (this.DEBUG && (oldBackups.length > 0 || remainingBackups.length > maxBackups)) {
+        console.log('[DataManager] Cleaned up old backups:', oldBackups.length);
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('[DataManager] Cleanup failed:', error);
+      return false;
+    }
+  }
+
+  checkStorageHealth() {
+    try {
+      const usage = this.calculateStorageUsage();
+      const health = this.assessStorageHealth(usage);
+      
+      if (health.status === 'critical') {
+        console.warn('[DataManager] Storage critical, forcing cleanup');
+        this.emergencyCleanup();
+      } else if (health.status === 'warning') {
+        console.warn('[DataManager] Storage warning, running cleanup');
+        this.cleanupOldBackups();
+      }
+      
+      if (this.DEBUG) {
+        console.log('[DataManager] Storage health:', health);
+      }
+      
+      return health;
+    } catch (error) {
+      console.error('[DataManager] Storage health check failed:', error);
+      return { status: 'error', usage: 0, available: 0 };
+    }
+  }
+
+  calculateStorageUsage() {
+    let totalSize = 0;
+    let experimentSize = 0;
+    const userId = this.experimentManager.userId;
+    
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      const value = localStorage.getItem(key);
+      const size = (key.length + value.length) * 2; // Rough estimate in bytes
+      
+      totalSize += size;
+      
+      if (key && userId && key.includes(userId)) {
+        experimentSize += size;
+      }
+    }
+    
+    return {
+      total: totalSize,
+      experiment: experimentSize,
+      available: this.maxStorageSize - totalSize
+    };
+  }
+
+  assessStorageHealth(usage) {
+    const utilizationPercent = (usage.total / this.maxStorageSize) * 100;
+    
+    let status;
+    if (utilizationPercent > 90) {
+      status = 'critical';
+    } else if (utilizationPercent > 70) {
+      status = 'warning';
+    } else {
+      status = 'healthy';
+    }
+    
+    return {
+      status,
+      usage: usage.total,
+      available: usage.available,
+      utilizationPercent: Math.round(utilizationPercent),
+      experimentUsage: usage.experiment
+    };
+  }
+
+  emergencyCleanup() {
+    try {
+      // Remove all old backups first
+      const backups = this.listBackups();
+      const oldBackups = backups.filter(b => b.age > 24 * 60 * 60 * 1000); // 1 day
+      
+      oldBackups.forEach(backup => {
+        localStorage.removeItem(backup.key);
+      });
+      
+      // Remove periodic backups
+      const periodicBackups = backups.filter(b => b.type === 'periodic');
+      periodicBackups.forEach(backup => {
+        localStorage.removeItem(backup.key);
+      });
+      
+      console.log('[DataManager] Emergency cleanup completed');
+      return true;
+    } catch (error) {
+      console.error('[DataManager] Emergency cleanup failed:', error);
+      return false;
+    }
+  }
+
+  logBackup(type, key, data) {
+    if (this.DEBUG) {
+      console.log(`[DataManager] ${type} backup created:`, {
+        key,
+        size: JSON.stringify(data).length,
+        events: data.currentSession?.events?.length || 0
+      });
+    }
+  }
+
+  exportAllData() {
+    const allData = {
+      userData: this.gatherSessionData(),
+      backups: this.listBackups().map(b => ({
+        ...b,
+        data: this.loadBackup(b.key)
+      })),
+      storageHealth: this.checkStorageHealth(),
+      exportTimestamp: new Date().toISOString()
+    };
+    
+    return allData;
+  }
+
+  getDebugInfo() {
+    return {
+      isInitialized: this.isInitialized,
+      compressionEnabled: this.compressionEnabled,
+      backupCount: this.listBackups().length,
+      storageHealth: this.checkStorageHealth(),
+      maxStorageSize: this.maxStorageSize
+    };
+  }
+
+  destroy() {
+    if (this.backupInterval) {
+      clearInterval(this.backupInterval);
+      this.backupInterval = null;
+    }
+    
+    if (this.deferredBackupTimeout) {
+      clearTimeout(this.deferredBackupTimeout);
+      this.deferredBackupTimeout = null;
+    }
+    
+    this.isInitialized = false;
+  }
+}
+
+
+class ExperimentManager {
+  constructor() {
+    this.SPEED_CONFIGS = {
+      pacman: {
+        slow: 0.5,
+        normal: 1.0,
+        fast: 1.5
+      },
+      ghost: {
+        slow: 0.5,
+        normal: 1.0,
+        fast: 1.5
+      }
+    };
+
+    this.PERMUTATIONS = this.generatePermutations();
+    this.currentSession = null;
+    this.userId = null;
+    this.sessionOrder = [];
+    this.metrics = [];
+    this.currentMetrics = null;
+    this.gameStartTime = null;
+    this.isExperimentActive = false;
+  }
+
+  generatePermutations() {
+    const permutations = [];
+    const pacmanSpeeds = ['slow', 'normal', 'fast'];
+    const ghostSpeeds = ['slow', 'normal', 'fast'];
+    
+    let id = 0;
+    for (const pacmanSpeed of pacmanSpeeds) {
+      for (const ghostSpeed of ghostSpeeds) {
+        permutations.push({
+          id: id++,
+          pacman: pacmanSpeed,
+          ghost: ghostSpeed
+        });
+      }
+    }
+    return permutations;
+  }
+
+  initializeUser(userId) {
+    if (!userId || userId.trim() === '') {
+      throw new Error('User ID is required');
+    }
+
+    this.userId = userId.trim();
+    this.loadUserData();
+    
+    if (this.sessionOrder.length === 0) {
+      this.sessionOrder = this.generateRandomizedOrder();
+      this.saveUserData();
+    }
+  }
+
+  generateRandomizedOrder() {
+    if (this.sessionManager) {
+      return this.sessionManager.generateAdvancedRandomization(this.userId);
+    }
+    
+    // Fallback to simple randomization
+    const order = [...Array(9).keys()];
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [order[i], order[j]] = [order[j], order[i]];
+    }
+    return order;
+  }
+
+  startSession() {
+    if (!this.userId) {
+      throw new Error('User ID must be set before starting session');
+    }
+
+    // Check for existing session state
+    const savedState = this.loadCurrentSession();
+    if (savedState && this.canResumeSession(savedState)) {
+      return this.resumeSession(savedState);
+    }
+
+    const completedSessions = this.getCompletedSessionsCount();
+    if (completedSessions >= 9) {
+      throw new Error('All sessions completed');
+    }
+
+    const permutationId = this.sessionOrder[completedSessions];
+    const config = this.PERMUTATIONS[permutationId];
+    
+    this.currentSession = {
+      userId: this.userId,
+      sessionId: completedSessions + 1,
+      permutationId: permutationId,
+      speedConfig: config,
+      timestamp: new Date(),
+      events: [],
+      summary: {
+        totalGhostsEaten: 0,
+        totalPelletsEaten: 0,
+        totalDeaths: 0,
+        successfulTurns: 0,
+        totalTurns: 0,
+        gameTime: 0
+      },
+      resumed: false,
+      startTime: Date.now()
+    };
+
+    this.currentMetrics = this.currentSession;
+    this.gameStartTime = Date.now();
+    this.isExperimentActive = true;
+
+    this.applySpeedConfiguration(config);
+    this.saveCurrentSession();
+    
+    return this.currentSession;
+  }
+
+  canResumeSession(savedState) {
+    const age = Date.now() - (savedState.lastSaved || savedState.startTime || 0);
+    const maxAge = 60 * 60 * 1000; // 1 hour
+    
+    return age < maxAge && 
+           savedState.userId === this.userId && 
+           savedState.sessionId > 0 && 
+           savedState.sessionId <= 9;
+  }
+
+  resumeSession(savedState) {
+    console.log('[ExperimentManager] Resuming previous session:', savedState.sessionId);
+    
+    this.currentSession = {
+      ...savedState,
+      resumed: true,
+      resumeTime: Date.now()
+    };
+    
+    this.currentMetrics = this.currentSession;
+    this.gameStartTime = savedState.startTime || Date.now();
+    this.isExperimentActive = true;
+
+    this.applySpeedConfiguration(savedState.speedConfig);
+    this.saveCurrentSession();
+    
+    return this.currentSession;
+  }
+
+  applySpeedConfiguration(config) {
+    const pacmanMultiplier = this.SPEED_CONFIGS.pacman[config.pacman];
+    const ghostMultiplier = this.SPEED_CONFIGS.ghost[config.ghost];
+
+    window.dispatchEvent(new CustomEvent('speedConfigChanged', {
+      detail: {
+        pacmanMultiplier,
+        ghostMultiplier,
+        config
+      }
+    }));
+  }
+
+  logEvent(type, data = {}) {
+    if (!this.isExperimentActive || !this.currentMetrics) {
+      console.warn('[ExperimentManager] Cannot log event - experiment not active');
+      return false;
+    }
+
+    if (!this.validateEventData(type, data)) {
+      console.error('[ExperimentManager] Invalid event data:', { type, data });
+      return false;
+    }
+
+    try {
+      const event = {
+        type,
+        time: Date.now() - this.gameStartTime,
+        timestamp: new Date(),
+        ...data
+      };
+
+      this.currentMetrics.events.push(event);
+      this.updateSummary(type, data);
+      this.saveCurrentSession();
+      
+      return true;
+    } catch (error) {
+      console.error('[ExperimentManager] Error logging event:', error);
+      return false;
+    }
+  }
+
+  validateEventData(type, data) {
+    const validTypes = ['ghostEaten', 'pelletEaten', 'death', 'turnComplete'];
+    
+    if (!validTypes.includes(type)) {
+      console.warn(`[ExperimentManager] Unknown event type: ${type}`);
+      return false;
+    }
+
+    if (typeof data !== 'object' || data === null) {
+      console.warn('[ExperimentManager] Event data must be an object');
+      return false;
+    }
+
+    switch (type) {
+      case 'ghostEaten':
+        if (!data.ghostId || typeof data.ghostId !== 'string') {
+          console.warn('[ExperimentManager] ghostEaten event requires valid ghostId');
+          return false;
+        }
+        break;
+        
+      case 'pelletEaten':
+        if (!data.type || !['pacdot', 'powerPellet', 'fruit'].includes(data.type)) {
+          console.warn('[ExperimentManager] pelletEaten event requires valid type');
+          return false;
+        }
+        break;
+        
+      case 'death':
+        if (!data.cause || typeof data.cause !== 'string') {
+          console.warn('[ExperimentManager] death event requires valid cause');
+          return false;
+        }
+        break;
+        
+      case 'turnComplete':
+        if (typeof data.success !== 'boolean') {
+          console.warn('[ExperimentManager] turnComplete event requires boolean success');
+          return false;
+        }
+        break;
+    }
+
+    return true;
+  }
+
+  updateSummary(type, data) {
+    if (!this.currentMetrics) return;
+
+    const summary = this.currentMetrics.summary;
+    
+    switch (type) {
+      case 'ghostEaten':
+        summary.totalGhostsEaten++;
+        break;
+      case 'pelletEaten':
+        summary.totalPelletsEaten++;
+        break;
+      case 'death':
+        summary.totalDeaths++;
+        break;
+      case 'turnComplete':
+        summary.totalTurns++;
+        if (data.success) {
+          summary.successfulTurns++;
+        }
+        break;
+    }
+  }
+
+  endSession() {
+    if (!this.isExperimentActive || !this.currentMetrics) return;
+
+    this.currentMetrics.summary.gameTime = Date.now() - this.gameStartTime;
+    this.metrics.push(this.currentMetrics);
+    
+    this.saveUserData();
+    this.clearCurrentSession();
+    
+    this.isExperimentActive = false;
+    this.currentMetrics = null;
+    this.gameStartTime = null;
+  }
+
+  getCompletedSessionsCount() {
+    return this.metrics.length;
+  }
+
+  getRemainingSessionsCount() {
+    return 9 - this.getCompletedSessionsCount();
+  }
+
+  getCurrentSessionInfo() {
+    if (!this.currentSession) return null;
+    
+    return {
+      sessionId: this.currentSession.sessionId,
+      completedSessions: this.getCompletedSessionsCount(),
+      totalSessions: 9,
+      speedConfig: this.currentSession.speedConfig
+    };
+  }
+
+  saveUserData() {
+    if (!this.userId) {
+      console.warn('[ExperimentManager] Cannot save user data - no userId');
+      return false;
+    }
+
+    try {
+      const userData = {
+        userId: this.userId,
+        sessionOrder: this.sessionOrder,
+        metrics: this.metrics,
+        lastUpdated: new Date(),
+        version: '1.0'
+      };
+
+      const serialized = JSON.stringify(userData);
+      if (serialized.length > 5000000) { // 5MB limit
+        console.warn('[ExperimentManager] User data too large, truncating old sessions');
+        userData.metrics = userData.metrics.slice(-5); // Keep only last 5 sessions
+      }
+
+      localStorage.setItem(`experiment_${this.userId}`, JSON.stringify(userData));
+      return true;
+    } catch (error) {
+      console.error('[ExperimentManager] Error saving user data:', error);
+      return false;
+    }
+  }
+
+  loadUserData() {
+    if (!this.userId) {
+      console.warn('[ExperimentManager] Cannot load user data - no userId');
+      return false;
+    }
+
+    try {
+      const stored = localStorage.getItem(`experiment_${this.userId}`);
+      if (stored) {
+        const userData = JSON.parse(stored);
+        
+        if (this.validateUserData(userData)) {
+          this.sessionOrder = userData.sessionOrder || [];
+          this.metrics = userData.metrics || [];
+          return true;
+        } else {
+          console.warn('[ExperimentManager] Invalid user data format, resetting');
+          this.resetUserData();
+          return false;
+        }
+      }
+      return true;
+    } catch (error) {
+      console.error('[ExperimentManager] Error loading user data:', error);
+      this.resetUserData();
+      return false;
+    }
+  }
+
+  validateUserData(userData) {
+    if (!userData || typeof userData !== 'object') {
+      return false;
+    }
+
+    if (userData.userId !== this.userId) {
+      console.warn('[ExperimentManager] User ID mismatch in stored data');
+      return false;
+    }
+
+    if (!Array.isArray(userData.sessionOrder) || userData.sessionOrder.length > 9) {
+      console.warn('[ExperimentManager] Invalid session order in stored data');
+      return false;
+    }
+
+    if (!Array.isArray(userData.metrics) || userData.metrics.length > 9) {
+      console.warn('[ExperimentManager] Invalid metrics array in stored data');
+      return false;
+    }
+
+    return true;
+  }
+
+  resetUserData() {
+    this.sessionOrder = [];
+    this.metrics = [];
+    
+    if (this.userId) {
+      localStorage.removeItem(`experiment_${this.userId}`);
+      localStorage.removeItem(`current_session_${this.userId}`);
+    }
+  }
+
+  saveCurrentSession() {
+    if (!this.currentSession) return;
+    localStorage.setItem(`current_session_${this.userId}`, JSON.stringify(this.currentSession));
+  }
+
+  loadCurrentSession() {
+    if (!this.userId) return null;
+    
+    const stored = localStorage.getItem(`current_session_${this.userId}`);
+    if (stored) {
+      this.currentSession = JSON.parse(stored);
+      this.currentMetrics = this.currentSession;
+      return this.currentSession;
+    }
+    return null;
+  }
+
+  clearCurrentSession() {
+    if (!this.userId) return;
+    localStorage.removeItem(`current_session_${this.userId}`);
+    this.currentSession = null;
+  }
+
+  exportData(format = 'json') {
+    const exportData = {
+      userId: this.userId,
+      sessionOrder: this.sessionOrder,
+      metrics: this.metrics,
+      exportTimestamp: new Date(),
+      totalSessions: this.metrics.length
+    };
+
+    if (format === 'csv') {
+      return this.convertToCSV(exportData);
+    }
+    
+    return JSON.stringify(exportData, null, 2);
+  }
+
+  convertToCSV(data) {
+    const headers = [
+      'userId', 'sessionId', 'permutationId', 'pacmanSpeed', 'ghostSpeed',
+      'totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths', 
+      'successfulTurns', 'totalTurns', 'gameTime', 'timestamp'
+    ];
+
+    const rows = data.metrics.map(session => [
+      session.userId,
+      session.sessionId,
+      session.permutationId,
+      session.speedConfig.pacman,
+      session.speedConfig.ghost,
+      session.summary.totalGhostsEaten,
+      session.summary.totalPelletsEaten,
+      session.summary.totalDeaths,
+      session.summary.successfulTurns,
+      session.summary.totalTurns,
+      session.summary.gameTime,
+      session.timestamp
+    ]);
+
+    return [headers, ...rows].map(row => row.join(',')).join('\n');
+  }
+
+  getDebugInfo() {
+    return {
+      userId: this.userId,
+      currentSession: this.currentSession?.sessionId || null,
+      completedSessions: this.getCompletedSessionsCount(),
+      remainingSessions: this.getRemainingSessionsCount(),
+      sessionOrder: this.sessionOrder,
+      isExperimentActive: this.isExperimentActive
+    };
+  }
+}
+
+
+class ExperimentUI {
+  constructor(experimentManager) {
+    this.experimentManager = experimentManager;
+    this.metricsCollector = null;
+    this.isInitialized = false;
+    this.metricsUpdateInterval = null;
+    this.DEBUG = true;
+  }
+
+  initialize() {
+    if (this.isInitialized) return;
+    
+    this.createExperimentInterface();
+    this.bindEvents();
+    this.isInitialized = true;
+  }
+
+  createExperimentInterface() {
+    const existingInterface = document.getElementById('experiment-interface');
+    if (existingInterface) {
+      existingInterface.remove();
+    }
+
+    const interfaceHTML = `
+      <div id="experiment-interface" style="position: fixed; top: 10px; left: 10px; z-index: 1000; background: rgba(0,0,0,0.8); color: white; padding: 15px; border-radius: 8px; font-family: monospace; max-width: 350px;">
+        <div id="experiment-login" style="display: block;">
+          <h3 style="margin: 0 0 10px 0; color: #ffff00;">Pac-Man Speed Experiment</h3>
+          <p style="margin: 0 0 10px 0; font-size: 12px;">Research study: Speed configuration effects on gameplay</p>
+          <div style="margin-bottom: 10px;">
+            <label style="display: block; margin-bottom: 5px;">Enter User ID:</label>
+            <input type="text" id="user-id-input" style="width: 100%; padding: 5px; border: none; border-radius: 3px; font-family: monospace;" placeholder="Enter unique identifier">
+          </div>
+          <button id="start-experiment-btn" style="width: 100%; padding: 8px; background: #00ff00; border: none; border-radius: 3px; cursor: pointer; font-weight: bold;">Start Experiment</button>
+          <div id="login-error" style="color: #ff0000; margin-top: 10px; display: none;"></div>
+        </div>
+        
+        <div id="experiment-session" style="display: none;">
+          <h3 style="margin: 0 0 10px 0; color: #ffff00;">Experiment Active</h3>
+          <div id="session-info" style="margin-bottom: 10px; font-size: 12px;"></div>
+          <div id="speed-config" style="margin-bottom: 10px; font-size: 12px;"></div>
+          <div id="progress-info" style="margin-bottom: 10px; font-size: 12px;"></div>
+          <div id="metrics-display" style="margin-bottom: 10px; font-size: 11px; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 3px;"></div>
+          <button id="end-session-btn" style="width: 100%; padding: 6px; background: #ff4444; border: none; border-radius: 3px; cursor: pointer; margin-top: 5px;">End Session</button>
+          <button id="export-data-btn" style="width: 100%; padding: 6px; background: #4444ff; border: none; border-radius: 3px; cursor: pointer; margin-top: 5px;">Export Data</button>
+        </div>
+        
+        <div id="experiment-complete" style="display: none;">
+          <h3 style="margin: 0 0 10px 0; color: #00ff00;">Experiment Complete!</h3>
+          <p style="margin: 0 0 10px 0; font-size: 12px;">All 9 sessions completed. Thank you for participating!</p>
+          <button id="export-final-data-btn" style="width: 100%; padding: 8px; background: #00ff00; border: none; border-radius: 3px; cursor: pointer;">Export Final Data</button>
+          <button id="reset-experiment-btn" style="width: 100%; padding: 6px; background: #ff4444; border: none; border-radius: 3px; cursor: pointer; margin-top: 5px;">Reset Experiment</button>
+        </div>
+
+        ${this.DEBUG ? this.createDebugPanel() : ''}
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', interfaceHTML);
+  }
+
+  createDebugPanel() {
+    return `
+      <div id="debug-panel" style="margin-top: 15px; border-top: 1px solid #333; padding-top: 10px;">
+        <h4 style="margin: 0 0 5px 0; color: #ffaa00;">Debug Info</h4>
+        <div id="debug-info" style="font-size: 10px; color: #ccc;"></div>
+        <button id="toggle-debug" style="padding: 3px 6px; background: #333; border: none; border-radius: 2px; cursor: pointer; font-size: 10px; margin-top: 5px;">Toggle Details</button>
+      </div>
+    `;
+  }
+
+  bindEvents() {
+    const startBtn = document.getElementById('start-experiment-btn');
+    const endBtn = document.getElementById('end-session-btn');
+    const exportBtn = document.getElementById('export-data-btn');
+    const exportFinalBtn = document.getElementById('export-final-data-btn');
+    const resetBtn = document.getElementById('reset-experiment-btn');
+    const userIdInput = document.getElementById('user-id-input');
+
+    if (startBtn) {
+      startBtn.addEventListener('click', () => this.handleStartExperiment());
+    }
+
+    if (endBtn) {
+      endBtn.addEventListener('click', () => this.handleEndSession());
+    }
+
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => this.handleExportData());
+    }
+
+    if (exportFinalBtn) {
+      exportFinalBtn.addEventListener('click', () => this.handleExportData());
+    }
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => this.handleResetExperiment());
+    }
+
+    if (userIdInput) {
+      userIdInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          this.handleStartExperiment();
+        }
+      });
+    }
+
+    if (this.DEBUG) {
+      const toggleDebugBtn = document.getElementById('toggle-debug');
+      if (toggleDebugBtn) {
+        toggleDebugBtn.addEventListener('click', () => this.toggleDebugDetails());
+      }
+    }
+  }
+
+  handleStartExperiment() {
+    const userIdInput = document.getElementById('user-id-input');
+    const errorDiv = document.getElementById('login-error');
+    
+    try {
+      const userId = userIdInput.value.trim();
+      if (!userId) {
+        throw new Error('Please enter a User ID');
+      }
+
+      this.experimentManager.initializeUser(userId);
+      
+      const completedSessions = this.experimentManager.getCompletedSessionsCount();
+      if (completedSessions >= 9) {
+        this.showCompleteInterface();
+        return;
+      }
+
+      this.experimentManager.startSession();
+      this.showSessionInterface();
+      this.updateSessionDisplay();
+      
+      if (errorDiv) {
+        errorDiv.style.display = 'none';
+      }
+
+      window.dispatchEvent(new CustomEvent('experimentSessionStarted', {
+        detail: this.experimentManager.getCurrentSessionInfo()
+      }));
+
+      this.startMetricsDisplay();
+
+    } catch (error) {
+      if (errorDiv) {
+        errorDiv.textContent = error.message;
+        errorDiv.style.display = 'block';
+      }
+    }
+  }
+
+  handleEndSession() {
+    try {
+      this.experimentManager.endSession();
+      
+      const completedSessions = this.experimentManager.getCompletedSessionsCount();
+      if (completedSessions >= 9) {
+        this.showCompleteInterface();
+      } else {
+        this.showLoginInterface();
+      }
+
+      window.dispatchEvent(new CustomEvent('experimentSessionEnded'));
+      
+      this.stopMetricsDisplay();
+
+    } catch (error) {
+      console.error('Error ending session:', error);
+    }
+  }
+
+  handleExportData() {
+    try {
+      const jsonData = this.experimentManager.exportData('json');
+      const csvData = this.experimentManager.exportData('csv');
+      
+      this.downloadFile(`experiment_${this.experimentManager.userId}_data.json`, jsonData);
+      this.downloadFile(`experiment_${this.experimentManager.userId}_data.csv`, csvData);
+      
+    } catch (error) {
+      console.error('Error exporting data:', error);
+    }
+  }
+
+  handleResetExperiment() {
+    if (confirm('Are you sure you want to reset the experiment? All data will be lost.')) {
+      if (this.experimentManager.userId) {
+        localStorage.removeItem(`experiment_${this.experimentManager.userId}`);
+        localStorage.removeItem(`current_session_${this.experimentManager.userId}`);
+      }
+      location.reload();
+    }
+  }
+
+  downloadFile(filename, content) {
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }
+
+  showLoginInterface() {
+    this.hideAllInterfaces();
+    const loginDiv = document.getElementById('experiment-login');
+    if (loginDiv) {
+      loginDiv.style.display = 'block';
+    }
+  }
+
+  showSessionInterface() {
+    this.hideAllInterfaces();
+    const sessionDiv = document.getElementById('experiment-session');
+    if (sessionDiv) {
+      sessionDiv.style.display = 'block';
+    }
+  }
+
+  showCompleteInterface() {
+    this.hideAllInterfaces();
+    const completeDiv = document.getElementById('experiment-complete');
+    if (completeDiv) {
+      completeDiv.style.display = 'block';
+    }
+  }
+
+  hideAllInterfaces() {
+    const interfaces = ['experiment-login', 'experiment-session', 'experiment-complete'];
+    interfaces.forEach(id => {
+      const element = document.getElementById(id);
+      if (element) {
+        element.style.display = 'none';
+      }
+    });
+  }
+
+  updateSessionDisplay() {
+    const sessionInfo = this.experimentManager.getCurrentSessionInfo();
+    if (!sessionInfo) return;
+
+    const sessionInfoDiv = document.getElementById('session-info');
+    const speedConfigDiv = document.getElementById('speed-config');
+    const progressInfoDiv = document.getElementById('progress-info');
+
+    if (sessionInfoDiv) {
+      sessionInfoDiv.innerHTML = `
+        <strong>User:</strong> ${this.experimentManager.userId}<br>
+        <strong>Session:</strong> ${sessionInfo.sessionId}/9
+      `;
+    }
+
+    if (speedConfigDiv) {
+      speedConfigDiv.innerHTML = `
+        <strong>Current Configuration:</strong><br>
+        Pac-Man Speed: ${sessionInfo.speedConfig.pacman}<br>
+        Ghost Speed: ${sessionInfo.speedConfig.ghost}
+      `;
+    }
+
+    if (progressInfoDiv) {
+      progressInfoDiv.innerHTML = `
+        <strong>Progress:</strong> ${sessionInfo.completedSessions}/${sessionInfo.totalSessions} completed
+      `;
+    }
+
+    if (this.DEBUG) {
+      this.updateDebugDisplay();
+    }
+  }
+
+  startMetricsDisplay() {
+    if (this.metricsUpdateInterval) {
+      clearInterval(this.metricsUpdateInterval);
+    }
+
+    this.metricsUpdateInterval = setInterval(() => {
+      this.updateMetricsDisplay();
+    }, 1000);
+  }
+
+  stopMetricsDisplay() {
+    if (this.metricsUpdateInterval) {
+      clearInterval(this.metricsUpdateInterval);
+      this.metricsUpdateInterval = null;
+    }
+  }
+
+  updateMetricsDisplay() {
+    const metricsDiv = document.getElementById('metrics-display');
+    if (!metricsDiv) return;
+
+    const metrics = this.getGameCoordinatorMetrics();
+    if (!metrics) {
+      metricsDiv.innerHTML = '<em>Waiting for game data...</em>';
+      return;
+    }
+
+    metricsDiv.innerHTML = `
+      <strong>Live Metrics:</strong><br>
+      Ghosts Eaten: ${metrics.summary.totalGhostsEaten}<br>
+      Pellets Eaten: ${metrics.summary.totalPelletsEaten}<br>
+      Deaths: ${metrics.summary.totalDeaths}<br>
+      Turns: ${metrics.summary.successfulTurns}/${metrics.summary.totalTurns}<br>
+      Consecutive: ${metrics.consecutiveTurns || 0}<br>
+      Events: ${metrics.events}
+    `;
+  }
+
+  getGameCoordinatorMetrics() {
+    try {
+      if (window.gameCoordinator && window.gameCoordinator.metricsCollector) {
+        return window.gameCoordinator.metricsCollector.getCurrentMetrics();
+      }
+      
+      if (this.metricsCollector) {
+        return this.metricsCollector.getCurrentMetrics();
+      }
+      
+      return null;
+    } catch (error) {
+      if (this.DEBUG) {
+        console.warn('[ExperimentUI] Error getting metrics:', error);
+      }
+      return null;
+    }
+  }
+
+  setMetricsCollector(metricsCollector) {
+    this.metricsCollector = metricsCollector;
+  }
+
+  updateDebugDisplay() {
+    const debugInfoDiv = document.getElementById('debug-info');
+    if (!debugInfoDiv) return;
+
+    const debugInfo = this.experimentManager.getDebugInfo();
+    debugInfoDiv.innerHTML = `
+      User: ${debugInfo.userId || 'None'}<br>
+      Current Session: ${debugInfo.currentSession || 'None'}<br>
+      Completed: ${debugInfo.completedSessions}/9<br>
+      Active: ${debugInfo.isExperimentActive ? 'Yes' : 'No'}
+    `;
+  }
+
+  toggleDebugDetails() {
+    const debugInfoDiv = document.getElementById('debug-info');
+    if (!debugInfoDiv) return;
+
+    const debugInfo = this.experimentManager.getDebugInfo();
+    const isDetailed = debugInfoDiv.innerHTML.includes('Session Order');
+
+    if (isDetailed) {
+      this.updateDebugDisplay();
+    } else {
+      debugInfoDiv.innerHTML = `
+        User: ${debugInfo.userId || 'None'}<br>
+        Current Session: ${debugInfo.currentSession || 'None'}<br>
+        Completed: ${debugInfo.completedSessions}/9<br>
+        Active: ${debugInfo.isExperimentActive ? 'Yes' : 'No'}<br>
+        Session Order: [${debugInfo.sessionOrder.join(', ')}]<br>
+        Remaining: ${debugInfo.remainingSessions}
+      `;
+    }
+  }
+
+  logMetric(type, data = {}) {
+    this.experimentManager.logEvent(type, data);
+    
+    if (this.DEBUG) {
+      console.log('[METRICS]', type, data);
+    }
+  }
+
+  destroy() {
+    const experimentInterface = document.getElementById('experiment-interface');
+    if (experimentInterface) {
+      experimentInterface.remove();
+    }
+    this.isInitialized = false;
+  }
+}
+
+
+class MetricsCollector {
+  constructor(experimentManager) {
+    this.experimentManager = experimentManager;
+    this.turnTracker = null;
+    this.lastPosition = null;
+    this.lastDirection = null;
+    this.turnStartTime = null;
+    this.consecutiveSuccessfulTurns = 0;
+    this.isInitialized = false;
+    this.DEBUG = true;
+  }
+
+  initialize(gameCoordinator) {
+    if (this.isInitialized) return;
+    
+    this.gameCoordinator = gameCoordinator;
+    this.bindGameEvents();
+    this.initializeTurnTracking();
+    this.isInitialized = true;
+    
+    if (this.DEBUG) {
+      console.log('[MetricsCollector] Initialized with game coordinator');
+    }
+  }
+
+  bindGameEvents() {
+    window.addEventListener('experimentSessionStarted', () => {
+      this.resetMetrics();
+    });
+
+    window.addEventListener('experimentSessionEnded', () => {
+      this.finalizeTurnTracking();
+    });
+
+    window.addEventListener('awardPoints', (e) => {
+      this.handlePointsEvent(e.detail);
+    });
+
+    window.addEventListener('dotEaten', () => {
+      this.logMetric('pelletEaten', {
+        type: 'pacdot',
+        position: this.getCurrentPacmanPosition(),
+        consecutiveTurns: this.consecutiveSuccessfulTurns
+      });
+    });
+
+    window.addEventListener('powerUp', () => {
+      this.logMetric('pelletEaten', {
+        type: 'powerPellet',
+        position: this.getCurrentPacmanPosition(),
+        consecutiveTurns: this.consecutiveSuccessfulTurns
+      });
+    });
+
+    window.addEventListener('eatGhost', (e) => {
+      this.logMetric('ghostEaten', {
+        ghostId: e.detail.ghost.name,
+        ghostMode: e.detail.ghost.mode,
+        position: this.getCurrentPacmanPosition(),
+        consecutiveTurns: this.consecutiveSuccessfulTurns
+      });
+    });
+
+    window.addEventListener('deathSequence', () => {
+      this.logMetric('death', {
+        cause: 'ghost_collision',
+        position: this.getCurrentPacmanPosition(),
+        consecutiveTurns: this.consecutiveSuccessfulTurns,
+        turnInProgress: this.turnTracker !== null
+      });
+      
+      this.resetTurnTracking();
+    });
+  }
+
+  handlePointsEvent(detail) {
+    if (detail.type === 'fruit') {
+      this.logMetric('pelletEaten', {
+        type: 'fruit',
+        points: detail.points,
+        position: this.getCurrentPacmanPosition(),
+        consecutiveTurns: this.consecutiveSuccessfulTurns
+      });
+    }
+  }
+
+  initializeTurnTracking() {
+    if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
+      setTimeout(() => this.initializeTurnTracking(), 100);
+      return;
+    }
+
+    setInterval(() => {
+      this.updateTurnTracking();
+    }, 50);
+  }
+
+  updateTurnTracking() {
+    if (!this.isExperimentActive()) return;
+
+    const pacman = this.gameCoordinator.pacman;
+    if (!pacman || !pacman.moving) return;
+
+    const currentPosition = this.getCurrentPacmanGridPosition();
+    const currentDirection = pacman.direction;
+    
+    if (!currentPosition) return;
+
+    if (this.hasDirectionChanged(currentDirection)) {
+      this.handleDirectionChange(currentPosition, currentDirection);
+    }
+
+    this.lastPosition = currentPosition;
+    this.lastDirection = currentDirection;
+  }
+
+  hasDirectionChanged(currentDirection) {
+    return this.lastDirection && this.lastDirection !== currentDirection;
+  }
+
+  handleDirectionChange(position, newDirection) {
+    if (this.turnTracker) {
+      this.completeTurn(position, newDirection);
+    }
+    
+    this.startNewTurn(position, newDirection);
+  }
+
+  startNewTurn(position, direction) {
+    this.turnTracker = {
+      startPosition: { ...position },
+      startDirection: this.lastDirection,
+      targetDirection: direction,
+      startTime: Date.now(),
+      successful: false
+    };
+    
+    this.turnStartTime = Date.now();
+    
+    if (this.DEBUG) {
+      console.log('[MetricsCollector] Turn started:', this.turnTracker);
+    }
+  }
+
+  completeTurn(position, actualDirection) {
+    if (!this.turnTracker) return;
+
+    const turnDuration = Date.now() - this.turnStartTime;
+    const successful = this.isTurnSuccessful(actualDirection);
+    
+    this.turnTracker.endPosition = { ...position };
+    this.turnTracker.actualDirection = actualDirection;
+    this.turnTracker.duration = turnDuration;
+    this.turnTracker.successful = successful;
+    
+    this.logMetric('turnComplete', {
+      success: successful,
+      startPosition: this.turnTracker.startPosition,
+      endPosition: this.turnTracker.endPosition,
+      startDirection: this.turnTracker.startDirection,
+      targetDirection: this.turnTracker.targetDirection,
+      actualDirection: actualDirection,
+      duration: turnDuration,
+      consecutiveTurns: successful ? this.consecutiveSuccessfulTurns + 1 : 0
+    });
+
+    if (successful) {
+      this.consecutiveSuccessfulTurns++;
+    } else {
+      this.consecutiveSuccessfulTurns = 0;
+    }
+
+    if (this.DEBUG) {
+      console.log('[MetricsCollector] Turn completed:', this.turnTracker);
+    }
+
+    this.turnTracker = null;
+  }
+
+  isTurnSuccessful(actualDirection) {
+    if (!this.turnTracker) return false;
+    
+    const intended = this.turnTracker.targetDirection;
+    const actual = actualDirection;
+    
+    const success = intended === actual;
+    
+    if (this.DEBUG && !success) {
+      console.log(`[MetricsCollector] Turn failed: intended ${intended}, actual ${actual}`);
+    }
+    
+    return success;
+  }
+
+  finalizeTurnTracking() {
+    if (this.turnTracker) {
+      const currentPosition = this.getCurrentPacmanGridPosition();
+      if (currentPosition) {
+        this.completeTurn(currentPosition, this.lastDirection);
+      }
+    }
+  }
+
+  resetTurnTracking() {
+    this.turnTracker = null;
+    this.consecutiveSuccessfulTurns = 0;
+    this.lastPosition = null;
+    this.lastDirection = null;
+    this.turnStartTime = null;
+    
+    if (this.DEBUG) {
+      console.log('[MetricsCollector] Turn tracking reset');
+    }
+  }
+
+  resetMetrics() {
+    this.resetTurnTracking();
+    
+    if (this.DEBUG) {
+      console.log('[MetricsCollector] Metrics reset for new session');
+    }
+  }
+
+  getCurrentPacmanPosition() {
+    if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
+      return null;
+    }
+    
+    return {
+      left: this.gameCoordinator.pacman.position.left,
+      top: this.gameCoordinator.pacman.position.top
+    };
+  }
+
+  getCurrentPacmanGridPosition() {
+    if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
+      return null;
+    }
+    
+    const pacman = this.gameCoordinator.pacman;
+    if (!pacman.characterUtil) {
+      return null;
+    }
+    
+    return pacman.characterUtil.determineGridPosition(
+      pacman.position, 
+      this.gameCoordinator.scaledTileSize
+    );
+  }
+
+  isExperimentActive() {
+    return this.experimentManager && this.experimentManager.isExperimentActive;
+  }
+
+  logMetric(type, data = {}) {
+    if (!this.experimentManager) {
+      if (this.DEBUG) {
+        console.warn('[MetricsCollector] No experiment manager available');
+      }
+      return;
+    }
+
+    const enrichedData = {
+      ...data,
+      timestamp: Date.now(),
+      pacmanPosition: this.getCurrentPacmanPosition(),
+      pacmanGridPosition: this.getCurrentPacmanGridPosition()
+    };
+
+    this.experimentManager.logEvent(type, enrichedData);
+    
+    if (this.DEBUG) {
+      console.log(`[MetricsCollector] Logged metric: ${type}`, enrichedData);
+    }
+  }
+
+  getCurrentMetrics() {
+    if (!this.experimentManager || !this.experimentManager.currentMetrics) {
+      return null;
+    }
+    
+    return {
+      session: this.experimentManager.currentMetrics.sessionId,
+      summary: this.experimentManager.currentMetrics.summary,
+      events: this.experimentManager.currentMetrics.events.length,
+      consecutiveTurns: this.consecutiveSuccessfulTurns,
+      turnInProgress: this.turnTracker !== null
+    };
+  }
+
+  getDetailedMetrics() {
+    const metrics = this.getCurrentMetrics();
+    if (!metrics) return null;
+
+    const events = this.experimentManager.currentMetrics.events;
+    
+    return {
+      ...metrics,
+      eventBreakdown: {
+        ghostsEaten: events.filter(e => e.type === 'ghostEaten').length,
+        pelletsEaten: events.filter(e => e.type === 'pelletEaten').length,
+        deaths: events.filter(e => e.type === 'death').length,
+        turnsCompleted: events.filter(e => e.type === 'turnComplete').length,
+        successfulTurns: events.filter(e => e.type === 'turnComplete' && e.success).length
+      },
+      recentEvents: events.slice(-5),
+      turnTracker: this.turnTracker
+    };
+  }
+
+  getDebugInfo() {
+    return {
+      isInitialized: this.isInitialized,
+      isExperimentActive: this.isExperimentActive(),
+      consecutiveSuccessfulTurns: this.consecutiveSuccessfulTurns,
+      turnInProgress: this.turnTracker !== null,
+      lastPosition: this.lastPosition,
+      lastDirection: this.lastDirection,
+      currentMetrics: this.getCurrentMetrics()
+    };
+  }
+}
+
+
+class ProgressController {
+  constructor(experimentManager, sessionManager) {
+    this.experimentManager = experimentManager;
+    this.sessionManager = sessionManager;
+    this.progressState = {
+      currentPhase: 'pre_session',
+      allowedActions: ['start_session'],
+      restrictions: [],
+      warnings: []
+    };
+    this.validationRules = [];
+    this.isInitialized = false;
+    this.DEBUG = true;
+  }
+
+  initialize() {
+    if (this.isInitialized) return;
+    
+    this.setupValidationRules();
+    this.bindEvents();
+    this.isInitialized = true;
+    
+    if (this.DEBUG) {
+      console.log('[ProgressController] Initialized');
+    }
+  }
+
+  setupValidationRules() {
+    this.validationRules = [
+      {
+        name: 'session_order_integrity',
+        check: () => this.validateSessionOrder(),
+        severity: 'error'
+      },
+      {
+        name: 'user_data_consistency',
+        check: () => this.validateUserDataConsistency(),
+        severity: 'error'
+      },
+      {
+        name: 'session_completion_rate',
+        check: () => this.validateSessionCompletionRate(),
+        severity: 'warning'
+      },
+      {
+        name: 'session_duration_bounds',
+        check: () => this.validateSessionDuration(),
+        severity: 'warning'
+      },
+      {
+        name: 'metrics_data_quality',
+        check: () => this.validateMetricsQuality(),
+        severity: 'warning'
+      }
+    ];
+  }
+
+  bindEvents() {
+    window.addEventListener('experimentSessionStarted', () => {
+      this.handleSessionStart();
+    });
+
+    window.addEventListener('experimentSessionEnded', () => {
+      this.handleSessionEnd();
+    });
+
+    window.addEventListener('sessionIdle', (e) => {
+      this.handleSessionIdle(e.detail);
+    });
+
+    window.addEventListener('sessionTimeout', (e) => {
+      this.handleSessionTimeout(e.detail);
+    });
+  }
+
+  handleSessionStart() {
+    this.progressState.currentPhase = 'in_session';
+    this.progressState.allowedActions = ['end_session', 'pause_session'];
+    this.progressState.restrictions = ['start_new_session', 'change_user'];
+    
+    const validation = this.runValidation();
+    if (validation.hasErrors) {
+      this.progressState.warnings.push('Session started with validation errors');
+    }
+    
+    if (this.DEBUG) {
+      console.log('[ProgressController] Session started, phase:', this.progressState.currentPhase);
+    }
+  }
+
+  handleSessionEnd() {
+    const completedSessions = this.experimentManager.getCompletedSessionsCount();
+    
+    if (completedSessions >= 9) {
+      this.progressState.currentPhase = 'experiment_complete';
+      this.progressState.allowedActions = ['export_data', 'reset_experiment'];
+      this.progressState.restrictions = ['start_session'];
+    } else {
+      this.progressState.currentPhase = 'between_sessions';
+      this.progressState.allowedActions = ['start_next_session', 'export_partial_data'];
+      this.progressState.restrictions = [];
+    }
+    
+    this.progressState.warnings = [];
+    
+    if (this.DEBUG) {
+      console.log('[ProgressController] Session ended, phase:', this.progressState.currentPhase);
+    }
+  }
+
+  handleSessionIdle(detail) {
+    this.progressState.warnings.push({
+      type: 'idle_session',
+      message: `Session idle for ${Math.round(detail.idleTime / 1000)} seconds`,
+      timestamp: Date.now()
+    });
+    
+    if (this.DEBUG) {
+      console.log('[ProgressController] Session idle detected');
+    }
+  }
+
+  handleSessionTimeout(detail) {
+    this.progressState.warnings.push({
+      type: 'session_timeout',
+      message: `Session exceeded maximum duration (${Math.round(detail.sessionTime / 1000)} seconds)`,
+      timestamp: Date.now()
+    });
+    
+    // Force end session
+    this.forceEndSession('timeout');
+    
+    if (this.DEBUG) {
+      console.log('[ProgressController] Session timeout, forcing end');
+    }
+  }
+
+  forceEndSession(reason) {
+    this.progressState.restrictions.push(`forced_end_${reason}`);
+    
+    // Trigger session end
+    window.dispatchEvent(new CustomEvent('forceEndSession', {
+      detail: { reason }
+    }));
+  }
+
+  canPerformAction(action) {
+    const allowed = this.progressState.allowedActions.includes(action);
+    const restricted = this.progressState.restrictions.includes(action);
+    
+    return allowed && !restricted;
+  }
+
+  validateAction(action, context = {}) {
+    const validation = {
+      allowed: this.canPerformAction(action),
+      errors: [],
+      warnings: []
+    };
+    
+    switch (action) {
+      case 'start_session':
+        this.validateStartSession(validation, context);
+        break;
+      case 'end_session':
+        this.validateEndSession(validation, context);
+        break;
+      case 'export_data':
+        this.validateExportData(validation, context);
+        break;
+      case 'reset_experiment':
+        this.validateResetExperiment(validation, context);
+        break;
+    }
+    
+    return validation;
+  }
+
+  validateStartSession(validation, context) {
+    const completedSessions = this.experimentManager.getCompletedSessionsCount();
+    
+    if (completedSessions >= 9) {
+      validation.errors.push('All sessions already completed');
+      validation.allowed = false;
+    }
+    
+    if (this.progressState.currentPhase === 'in_session') {
+      validation.errors.push('Session already in progress');
+      validation.allowed = false;
+    }
+    
+    if (!this.experimentManager.userId) {
+      validation.errors.push('User ID not set');
+      validation.allowed = false;
+    }
+    
+    // Check for incomplete session state
+    const savedState = this.sessionManager.loadSessionState();
+    if (savedState) {
+      validation.warnings.push('Previous session state found - will resume');
+    }
+  }
+
+  validateEndSession(validation, context) {
+    if (this.progressState.currentPhase !== 'in_session') {
+      validation.errors.push('No active session to end');
+      validation.allowed = false;
+    }
+    
+    const currentMetrics = this.experimentManager.currentMetrics;
+    if (currentMetrics && currentMetrics.events.length === 0) {
+      validation.warnings.push('Ending session with no recorded events');
+    }
+  }
+
+  validateExportData(validation, context) {
+    const completedSessions = this.experimentManager.getCompletedSessionsCount();
+    
+    if (completedSessions === 0) {
+      validation.errors.push('No completed sessions to export');
+      validation.allowed = false;
+    }
+    
+    if (!this.testLocalStorage()) {
+      validation.warnings.push('Local storage not available - export may be incomplete');
+    }
+  }
+
+  validateResetExperiment(validation, context) {
+    if (this.progressState.currentPhase === 'in_session') {
+      validation.errors.push('Cannot reset during active session');
+      validation.allowed = false;
+    }
+    
+    const completedSessions = this.experimentManager.getCompletedSessionsCount();
+    if (completedSessions > 0) {
+      validation.warnings.push(`Resetting will lose ${completedSessions} completed sessions`);
+    }
+  }
+
+  runValidation() {
+    const results = {
+      passed: [],
+      warnings: [],
+      errors: [],
+      hasErrors: false,
+      hasWarnings: false
+    };
+    
+    this.validationRules.forEach(rule => {
+      try {
+        const result = rule.check();
+        
+        if (result.valid) {
+          results.passed.push(rule.name);
+        } else {
+          if (rule.severity === 'error') {
+            results.errors.push({
+              rule: rule.name,
+              message: result.message,
+              data: result.data
+            });
+            results.hasErrors = true;
+          } else {
+            results.warnings.push({
+              rule: rule.name,
+              message: result.message,
+              data: result.data
+            });
+            results.hasWarnings = true;
+          }
+        }
+      } catch (error) {
+        results.errors.push({
+          rule: rule.name,
+          message: `Validation rule failed: ${error.message}`,
+          data: { error: error.toString() }
+        });
+        results.hasErrors = true;
+      }
+    });
+    
+    return results;
+  }
+
+  validateSessionOrder() {
+    const sessionOrder = this.experimentManager.sessionOrder;
+    const completedSessions = this.experimentManager.getCompletedSessionsCount();
+    
+    if (sessionOrder.length !== 9) {
+      return {
+        valid: false,
+        message: `Invalid session order length: ${sessionOrder.length}, expected 9`,
+        data: { sessionOrder }
+      };
+    }
+    
+    const uniqueIds = new Set(sessionOrder);
+    if (uniqueIds.size !== 9) {
+      return {
+        valid: false,
+        message: 'Session order contains duplicate permutation IDs',
+        data: { sessionOrder, duplicates: sessionOrder.length - uniqueIds.size }
+      };
+    }
+    
+    const validIds = sessionOrder.every(id => id >= 0 && id <= 8);
+    if (!validIds) {
+      return {
+        valid: false,
+        message: 'Session order contains invalid permutation IDs',
+        data: { sessionOrder }
+      };
+    }
+    
+    return { valid: true };
+  }
+
+  validateUserDataConsistency() {
+    const userId = this.experimentManager.userId;
+    const metrics = this.experimentManager.metrics;
+    
+    if (!userId) {
+      return {
+        valid: false,
+        message: 'No user ID set',
+        data: {}
+      };
+    }
+    
+    const userIdMismatch = metrics.some(metric => metric.userId !== userId);
+    if (userIdMismatch) {
+      return {
+        valid: false,
+        message: 'User ID mismatch in metrics data',
+        data: { userId, metricsCount: metrics.length }
+      };
+    }
+    
+    const sessionIdGaps = this.checkSessionIdSequence(metrics);
+    if (sessionIdGaps.length > 0) {
+      return {
+        valid: false,
+        message: 'Session ID sequence has gaps',
+        data: { gaps: sessionIdGaps }
+      };
+    }
+    
+    return { valid: true };
+  }
+
+  checkSessionIdSequence(metrics) {
+    const sessionIds = metrics.map(m => m.sessionId).sort((a, b) => a - b);
+    const gaps = [];
+    
+    for (let i = 1; i <= sessionIds.length; i++) {
+      if (!sessionIds.includes(i)) {
+        gaps.push(i);
+      }
+    }
+    
+    return gaps;
+  }
+
+  validateSessionCompletionRate() {
+    const analytics = this.sessionManager.getSessionAnalytics();
+    const completionRate = analytics.totalSessions > 0 
+      ? analytics.completedSessions / analytics.totalSessions 
+      : 1;
+    
+    if (completionRate < 0.8) {
+      return {
+        valid: false,
+        message: `Low session completion rate: ${Math.round(completionRate * 100)}%`,
+        data: analytics
+      };
+    }
+    
+    return { valid: true };
+  }
+
+  validateSessionDuration() {
+    const analytics = this.sessionManager.getSessionAnalytics();
+    const avgDuration = analytics.averageDuration;
+    
+    // Expect sessions to be between 2-25 minutes
+    const minDuration = 2 * 60 * 1000;
+    const maxDuration = 25 * 60 * 1000;
+    
+    if (avgDuration < minDuration) {
+      return {
+        valid: false,
+        message: `Average session duration too short: ${Math.round(avgDuration / 1000)}s`,
+        data: { avgDuration, minExpected: minDuration }
+      };
+    }
+    
+    if (avgDuration > maxDuration) {
+      return {
+        valid: false,
+        message: `Average session duration too long: ${Math.round(avgDuration / 1000)}s`,
+        data: { avgDuration, maxExpected: maxDuration }
+      };
+    }
+    
+    return { valid: true };
+  }
+
+  validateMetricsQuality() {
+    const currentMetrics = this.experimentManager.currentMetrics;
+    if (!currentMetrics) {
+      return { valid: true }; // No current session
+    }
+    
+    const events = currentMetrics.events;
+    const summary = currentMetrics.summary;
+    
+    // Check for reasonable event counts
+    if (events.length === 0 && Date.now() - this.sessionManager.sessionStartTime > 60000) {
+      return {
+        valid: false,
+        message: 'No events recorded after 1 minute of gameplay',
+        data: { eventCount: events.length, sessionTime: Date.now() - this.sessionManager.sessionStartTime }
+      };
+    }
+    
+    // Check for data consistency between events and summary
+    const eventCounts = this.countEventTypes(events);
+    
+    if (Math.abs(eventCounts.ghostEaten - summary.totalGhostsEaten) > 0) {
+      return {
+        valid: false,
+        message: 'Ghost eaten count mismatch between events and summary',
+        data: { events: eventCounts.ghostEaten, summary: summary.totalGhostsEaten }
+      };
+    }
+    
+    return { valid: true };
+  }
+
+  countEventTypes(events) {
+    return events.reduce((counts, event) => {
+      counts[event.type] = (counts[event.type] || 0) + 1;
+      return counts;
+    }, {});
+  }
+
+  testLocalStorage() {
+    try {
+      const test = 'test';
+      localStorage.setItem(test, test);
+      localStorage.removeItem(test);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  getProgressSummary() {
+    const validation = this.runValidation();
+    const completedSessions = this.experimentManager.getCompletedSessionsCount();
+    const analytics = this.sessionManager.getSessionAnalytics();
+    
+    return {
+      phase: this.progressState.currentPhase,
+      progress: `${completedSessions}/9`,
+      progressPercent: Math.round((completedSessions / 9) * 100),
+      allowedActions: this.progressState.allowedActions,
+      restrictions: this.progressState.restrictions,
+      warnings: this.progressState.warnings,
+      validation,
+      analytics: {
+        completionRate: analytics.totalSessions > 0 
+          ? Math.round((analytics.completedSessions / analytics.totalSessions) * 100) 
+          : 100,
+        averageDuration: Math.round(analytics.averageDuration / 1000),
+        totalEvents: analytics.totalEvents
+      }
+    };
+  }
+
+  getDebugInfo() {
+    return {
+      isInitialized: this.isInitialized,
+      progressState: this.progressState,
+      validationRules: this.validationRules.map(r => r.name),
+      summary: this.getProgressSummary()
+    };
+  }
+}
+
+
+class SessionManager {
+  constructor(experimentManager) {
+    this.experimentManager = experimentManager;
+    this.sessionHistory = [];
+    this.currentSessionData = null;
+    this.sessionStartTime = null;
+    this.lastActivityTime = null;
+    this.idleThreshold = 5 * 60 * 1000; // 5 minutes
+    this.maxSessionDuration = 30 * 60 * 1000; // 30 minutes
+    this.isInitialized = false;
+    this.DEBUG = true;
+  }
+
+  initialize() {
+    if (this.isInitialized) return;
+    
+    this.bindEvents();
+    this.setupActivityTracking();
+    this.loadSessionHistory();
+    this.isInitialized = true;
+    
+    if (this.DEBUG) {
+      console.log('[SessionManager] Initialized');
+    }
+  }
+
+  bindEvents() {
+    window.addEventListener('experimentSessionStarted', (e) => {
+      this.handleSessionStart(e.detail);
+    });
+
+    window.addEventListener('experimentSessionEnded', () => {
+      this.handleSessionEnd();
+    });
+
+    window.addEventListener('beforeunload', () => {
+      this.handlePageUnload();
+    });
+
+    window.addEventListener('visibilitychange', () => {
+      this.handleVisibilityChange();
+    });
+  }
+
+  setupActivityTracking() {
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    
+    events.forEach(event => {
+      document.addEventListener(event, () => {
+        this.updateLastActivity();
+      }, true);
+    });
+
+    setInterval(() => {
+      this.checkIdleStatus();
+    }, 30000); // Check every 30 seconds
+  }
+
+  generateAdvancedRandomization(userId) {
+    const seed = this.createSeedFromUserId(userId);
+    const rng = this.createSeededRandom(seed);
+    
+    // Fisher-Yates shuffle with seeded random
+    const permutations = [...Array(9).keys()];
+    for (let i = permutations.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [permutations[i], permutations[j]] = [permutations[j], permutations[i]];
+    }
+    
+    // Ensure balanced distribution across speed types
+    const speedDistribution = this.validateSpeedDistribution(permutations);
+    
+    if (this.DEBUG) {
+      console.log('[SessionManager] Generated randomization for', userId, permutations);
+      console.log('[SessionManager] Speed distribution:', speedDistribution);
+    }
+    
+    return permutations;
+  }
+
+  createSeedFromUserId(userId) {
+    let hash = 0;
+    for (let i = 0; i < userId.length; i++) {
+      const char = userId.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return Math.abs(hash);
+  }
+
+  createSeededRandom(seed) {
+    let currentSeed = seed;
+    return function() {
+      currentSeed = (currentSeed * 9301 + 49297) % 233280;
+      return currentSeed / 233280;
+    };
+  }
+
+  validateSpeedDistribution(permutations) {
+    const speeds = ['slow', 'normal', 'fast'];
+    const pacmanCounts = { slow: 0, normal: 0, fast: 0 };
+    const ghostCounts = { slow: 0, normal: 0, fast: 0 };
+    
+    permutations.forEach(permId => {
+      const config = this.experimentManager.PERMUTATIONS[permId];
+      pacmanCounts[config.pacman]++;
+      ghostCounts[config.ghost]++;
+    });
+    
+    return { pacman: pacmanCounts, ghost: ghostCounts };
+  }
+
+  handleSessionStart(sessionInfo) {
+    this.currentSessionData = {
+      ...sessionInfo,
+      startTime: Date.now(),
+      events: [],
+      milestones: [],
+      deviceInfo: this.captureDeviceInfo(),
+      browserInfo: this.captureBrowserInfo()
+    };
+    
+    this.sessionStartTime = Date.now();
+    this.updateLastActivity();
+    this.saveSessionState();
+    
+    this.logMilestone('session_started', {
+      sessionId: sessionInfo.sessionId,
+      speedConfig: sessionInfo.speedConfig
+    });
+    
+    if (this.DEBUG) {
+      console.log('[SessionManager] Session started:', this.currentSessionData);
+    }
+  }
+
+  handleSessionEnd() {
+    if (!this.currentSessionData) return;
+    
+    const sessionDuration = Date.now() - this.sessionStartTime;
+    
+    this.logMilestone('session_ended', {
+      duration: sessionDuration,
+      totalEvents: this.currentSessionData.events.length
+    });
+    
+    this.sessionHistory.push({
+      ...this.currentSessionData,
+      endTime: Date.now(),
+      duration: sessionDuration,
+      completed: true
+    });
+    
+    this.saveSessionHistory();
+    this.clearSessionState();
+    this.currentSessionData = null;
+    this.sessionStartTime = null;
+    
+    if (this.DEBUG) {
+      console.log('[SessionManager] Session ended, duration:', sessionDuration);
+    }
+  }
+
+  handlePageUnload() {
+    if (this.currentSessionData) {
+      this.logMilestone('page_unload', {
+        duration: Date.now() - this.sessionStartTime,
+        completed: false
+      });
+      
+      this.saveSessionState();
+      
+      if (this.DEBUG) {
+        console.log('[SessionManager] Page unload detected, session saved');
+      }
+    }
+  }
+
+  handleVisibilityChange() {
+    if (document.hidden) {
+      this.logMilestone('tab_hidden', {
+        timestamp: Date.now()
+      });
+    } else {
+      this.logMilestone('tab_visible', {
+        timestamp: Date.now()
+      });
+      this.updateLastActivity();
+    }
+  }
+
+  updateLastActivity() {
+    this.lastActivityTime = Date.now();
+  }
+
+  checkIdleStatus() {
+    if (!this.currentSessionData || !this.lastActivityTime) return;
+    
+    const idleTime = Date.now() - this.lastActivityTime;
+    const sessionTime = Date.now() - this.sessionStartTime;
+    
+    if (idleTime > this.idleThreshold) {
+      this.logMilestone('idle_detected', {
+        idleTime: idleTime,
+        sessionTime: sessionTime
+      });
+      
+      this.handleIdleSession();
+    }
+    
+    if (sessionTime > this.maxSessionDuration) {
+      this.logMilestone('session_timeout', {
+        sessionTime: sessionTime
+      });
+      
+      this.handleSessionTimeout();
+    }
+  }
+
+  handleIdleSession() {
+    if (this.DEBUG) {
+      console.log('[SessionManager] Idle session detected');
+    }
+    
+    // Could trigger a warning or pause the game
+    window.dispatchEvent(new CustomEvent('sessionIdle', {
+      detail: {
+        idleTime: Date.now() - this.lastActivityTime
+      }
+    }));
+  }
+
+  handleSessionTimeout() {
+    if (this.DEBUG) {
+      console.log('[SessionManager] Session timeout detected');
+    }
+    
+    // Force end the session
+    window.dispatchEvent(new CustomEvent('sessionTimeout', {
+      detail: {
+        sessionTime: Date.now() - this.sessionStartTime
+      }
+    }));
+  }
+
+  logMilestone(type, data = {}) {
+    if (!this.currentSessionData) return;
+    
+    const milestone = {
+      type,
+      timestamp: Date.now(),
+      sessionTime: Date.now() - this.sessionStartTime,
+      ...data
+    };
+    
+    this.currentSessionData.milestones.push(milestone);
+    this.saveSessionState();
+    
+    if (this.DEBUG) {
+      console.log('[SessionManager] Milestone:', type, data);
+    }
+  }
+
+  captureDeviceInfo() {
+    return {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      language: navigator.language,
+      cookieEnabled: navigator.cookieEnabled,
+      onLine: navigator.onLine,
+      screenResolution: {
+        width: screen.width,
+        height: screen.height,
+        colorDepth: screen.colorDepth
+      },
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight
+      }
+    };
+  }
+
+  captureBrowserInfo() {
+    return {
+      url: window.location.href,
+      referrer: document.referrer,
+      title: document.title,
+      timestamp: new Date().toISOString(),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      localStorageAvailable: this.testLocalStorage()
+    };
+  }
+
+  testLocalStorage() {
+    try {
+      const test = 'test';
+      localStorage.setItem(test, test);
+      localStorage.removeItem(test);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  saveSessionState() {
+    if (!this.currentSessionData || !this.experimentManager.userId) return;
+    
+    try {
+      const stateData = {
+        ...this.currentSessionData,
+        lastSaved: Date.now()
+      };
+      
+      localStorage.setItem(
+        `session_state_${this.experimentManager.userId}`, 
+        JSON.stringify(stateData)
+      );
+      
+      return true;
+    } catch (error) {
+      console.error('[SessionManager] Error saving session state:', error);
+      return false;
+    }
+  }
+
+  loadSessionState() {
+    if (!this.experimentManager.userId) return null;
+    
+    try {
+      const stored = localStorage.getItem(`session_state_${this.experimentManager.userId}`);
+      if (stored) {
+        const stateData = JSON.parse(stored);
+        
+        // Check if session is recent (within 1 hour)
+        const age = Date.now() - stateData.lastSaved;
+        if (age < 60 * 60 * 1000) {
+          return stateData;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('[SessionManager] Error loading session state:', error);
+      return null;
+    }
+  }
+
+  clearSessionState() {
+    if (!this.experimentManager.userId) return;
+    
+    localStorage.removeItem(`session_state_${this.experimentManager.userId}`);
+  }
+
+  saveSessionHistory() {
+    if (!this.experimentManager.userId) return;
+    
+    try {
+      const historyData = {
+        userId: this.experimentManager.userId,
+        sessions: this.sessionHistory,
+        lastUpdated: Date.now()
+      };
+      
+      localStorage.setItem(
+        `session_history_${this.experimentManager.userId}`, 
+        JSON.stringify(historyData)
+      );
+      
+      return true;
+    } catch (error) {
+      console.error('[SessionManager] Error saving session history:', error);
+      return false;
+    }
+  }
+
+  loadSessionHistory() {
+    if (!this.experimentManager.userId) return;
+    
+    try {
+      const stored = localStorage.getItem(`session_history_${this.experimentManager.userId}`);
+      if (stored) {
+        const historyData = JSON.parse(stored);
+        this.sessionHistory = historyData.sessions || [];
+      }
+    } catch (error) {
+      console.error('[SessionManager] Error loading session history:', error);
+      this.sessionHistory = [];
+    }
+  }
+
+  getSessionAnalytics() {
+    const completed = this.sessionHistory.filter(s => s.completed);
+    const incomplete = this.sessionHistory.filter(s => !s.completed);
+    
+    const avgDuration = completed.length > 0 
+      ? completed.reduce((sum, s) => sum + s.duration, 0) / completed.length 
+      : 0;
+    
+    const totalEvents = completed.reduce((sum, s) => sum + (s.events?.length || 0), 0);
+    
+    return {
+      totalSessions: this.sessionHistory.length,
+      completedSessions: completed.length,
+      incompleteSessions: incomplete.length,
+      averageDuration: avgDuration,
+      totalEvents: totalEvents,
+      sessionHistory: this.sessionHistory.map(s => ({
+        sessionId: s.sessionId,
+        speedConfig: s.speedConfig,
+        duration: s.duration,
+        completed: s.completed,
+        events: s.events?.length || 0,
+        milestones: s.milestones?.length || 0
+      }))
+    };
+  }
+
+  exportSessionData() {
+    const analytics = this.getSessionAnalytics();
+    const deviceInfo = this.captureDeviceInfo();
+    const browserInfo = this.captureBrowserInfo();
+    
+    return {
+      userId: this.experimentManager.userId,
+      exportTimestamp: new Date().toISOString(),
+      analytics,
+      deviceInfo,
+      browserInfo,
+      fullSessionHistory: this.sessionHistory,
+      currentSession: this.currentSessionData
+    };
+  }
+
+  getDebugInfo() {
+    return {
+      isInitialized: this.isInitialized,
+      currentSessionActive: this.currentSessionData !== null,
+      sessionStartTime: this.sessionStartTime,
+      lastActivityTime: this.lastActivityTime,
+      sessionHistory: this.sessionHistory.length,
+      idleThreshold: this.idleThreshold,
+      maxSessionDuration: this.maxSessionDuration,
+      analytics: this.getSessionAnalytics()
+    };
+  }
+}
+
+
+class SpeedController {
+  constructor() {
+    this.originalSpeeds = {
+      pacman: null,
+      ghosts: {}
+    };
+    this.currentMultipliers = {
+      pacman: 1.0,
+      ghost: 1.0
+    };
+    this.isInitialized = false;
+  }
+
+  initialize(gameCoordinator) {
+    if (this.isInitialized) return;
+    
+    this.gameCoordinator = gameCoordinator;
+    this.storeOriginalSpeeds();
+    this.bindEvents();
+    this.isInitialized = true;
+  }
+
+  storeOriginalSpeeds() {
+    if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
+      console.warn('[SpeedController] Game entities not ready, deferring speed storage');
+      return;
+    }
+
+    this.originalSpeeds.pacman = this.gameCoordinator.pacman.velocityPerMs;
+    
+    if (this.gameCoordinator.ghosts) {
+      this.gameCoordinator.ghosts.forEach(ghost => {
+        this.originalSpeeds.ghosts[ghost.name] = {
+          slowSpeed: ghost.slowSpeed,
+          mediumSpeed: ghost.mediumSpeed,
+          fastSpeed: ghost.fastSpeed,
+          scaredSpeed: ghost.scaredSpeed,
+          transitionSpeed: ghost.transitionSpeed,
+          eyeSpeed: ghost.eyeSpeed,
+          defaultSpeed: ghost.defaultSpeed
+        };
+      });
+    }
+
+    console.log('[SpeedController] Original speeds stored:', this.originalSpeeds);
+  }
+
+  bindEvents() {
+    window.addEventListener('speedConfigChanged', (e) => {
+      this.applySpeedConfiguration(e.detail);
+    });
+
+    window.addEventListener('experimentSessionEnded', () => {
+      this.resetToOriginalSpeeds();
+    });
+  }
+
+  applySpeedConfiguration(detail) {
+    const { pacmanMultiplier, ghostMultiplier, config } = detail;
+    
+    console.log('[SpeedController] Applying speed config:', config);
+    
+    this.currentMultipliers.pacman = pacmanMultiplier;
+    this.currentMultipliers.ghost = ghostMultiplier;
+
+    if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
+      console.warn('[SpeedController] Game entities not ready for speed application');
+      return;
+    }
+
+    if (this.originalSpeeds.pacman === null) {
+      this.storeOriginalSpeeds();
+    }
+
+    this.applyPacmanSpeed(pacmanMultiplier);
+    this.applyGhostSpeeds(ghostMultiplier);
+    
+    console.log('[SpeedController] Speed configuration applied successfully');
+  }
+
+  applyPacmanSpeed(multiplier) {
+    if (!this.gameCoordinator.pacman || this.originalSpeeds.pacman === null) {
+      return;
+    }
+
+    const newSpeed = this.originalSpeeds.pacman * multiplier;
+    this.gameCoordinator.pacman.velocityPerMs = newSpeed;
+    
+    console.log(`[SpeedController] Pacman speed: ${this.originalSpeeds.pacman} * ${multiplier} = ${newSpeed}`);
+  }
+
+  applyGhostSpeeds(multiplier) {
+    if (!this.gameCoordinator.ghosts) {
+      return;
+    }
+
+    this.gameCoordinator.ghosts.forEach(ghost => {
+      const originalSpeeds = this.originalSpeeds.ghosts[ghost.name];
+      if (!originalSpeeds) {
+        console.warn(`[SpeedController] No original speeds found for ghost: ${ghost.name}`);
+        return;
+      }
+
+      ghost.slowSpeed = originalSpeeds.slowSpeed * multiplier;
+      ghost.mediumSpeed = originalSpeeds.mediumSpeed * multiplier;
+      ghost.fastSpeed = originalSpeeds.fastSpeed * multiplier;
+      ghost.scaredSpeed = originalSpeeds.scaredSpeed * multiplier;
+      ghost.transitionSpeed = originalSpeeds.transitionSpeed * multiplier;
+      ghost.eyeSpeed = originalSpeeds.eyeSpeed * multiplier;
+      
+      const currentSpeedType = this.determineCurrentSpeedType(ghost, originalSpeeds);
+      ghost.defaultSpeed = originalSpeeds[currentSpeedType] * multiplier;
+      ghost.velocityPerMs = ghost.defaultSpeed;
+
+      console.log(`[SpeedController] ${ghost.name} speeds multiplied by ${multiplier}`);
+    });
+  }
+
+  determineCurrentSpeedType(ghost, originalSpeeds) {
+    if (Math.abs(ghost.defaultSpeed - originalSpeeds.slowSpeed) < 0.001) {
+      return 'slowSpeed';
+    } else if (Math.abs(ghost.defaultSpeed - originalSpeeds.mediumSpeed) < 0.001) {
+      return 'mediumSpeed';
+    } else if (Math.abs(ghost.defaultSpeed - originalSpeeds.fastSpeed) < 0.001) {
+      return 'fastSpeed';
+    }
+    return 'slowSpeed';
+  }
+
+  resetToOriginalSpeeds() {
+    console.log('[SpeedController] Resetting to original speeds');
+    
+    this.currentMultipliers.pacman = 1.0;
+    this.currentMultipliers.ghost = 1.0;
+
+    if (this.gameCoordinator && this.gameCoordinator.pacman && this.originalSpeeds.pacman !== null) {
+      this.gameCoordinator.pacman.velocityPerMs = this.originalSpeeds.pacman;
+    }
+
+    if (this.gameCoordinator && this.gameCoordinator.ghosts) {
+      this.gameCoordinator.ghosts.forEach(ghost => {
+        const originalSpeeds = this.originalSpeeds.ghosts[ghost.name];
+        if (originalSpeeds) {
+          ghost.slowSpeed = originalSpeeds.slowSpeed;
+          ghost.mediumSpeed = originalSpeeds.mediumSpeed;
+          ghost.fastSpeed = originalSpeeds.fastSpeed;
+          ghost.scaredSpeed = originalSpeeds.scaredSpeed;
+          ghost.transitionSpeed = originalSpeeds.transitionSpeed;
+          ghost.eyeSpeed = originalSpeeds.eyeSpeed;
+          ghost.defaultSpeed = originalSpeeds.defaultSpeed;
+          ghost.velocityPerMs = ghost.defaultSpeed;
+        }
+      });
+    }
+  }
+
+  getCurrentConfiguration() {
+    return {
+      pacmanMultiplier: this.currentMultipliers.pacman,
+      ghostMultiplier: this.currentMultipliers.ghost,
+      isModified: this.currentMultipliers.pacman !== 1.0 || this.currentMultipliers.ghost !== 1.0
+    };
+  }
+
+  getDebugInfo() {
+    return {
+      originalSpeeds: this.originalSpeeds,
+      currentMultipliers: this.currentMultipliers,
+      isInitialized: this.isInitialized,
+      currentConfig: this.getCurrentConfiguration()
+    };
   }
 }
 

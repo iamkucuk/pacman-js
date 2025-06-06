@@ -111,6 +111,51 @@ class GameCoordinator {
     link.onload = this.preloadAssets.bind(this);
 
     head.appendChild(link);
+    
+    this.initializeExperiment();
+  }
+
+  initializeExperiment() {
+    this.experimentManager = new ExperimentManager();
+    this.sessionManager = new SessionManager(this.experimentManager);
+    this.progressController = new ProgressController(this.experimentManager, this.sessionManager);
+    this.dataManager = new DataManager(this.experimentManager, this.sessionManager);
+    this.exportManager = new ExportManager(this.experimentManager, this.sessionManager, this.dataManager);
+    this.visualizationDashboard = new VisualizationDashboard(this.experimentManager, this.sessionManager, this.exportManager);
+    this.experimentUI = new ExperimentUI(this.experimentManager);
+    this.speedController = new SpeedController();
+    this.metricsCollector = new MetricsCollector(this.experimentManager);
+    
+    // Set cross-references
+    this.experimentManager.sessionManager = this.sessionManager;
+    this.experimentManager.progressController = this.progressController;
+    this.experimentManager.dataManager = this.dataManager;
+    this.experimentManager.exportManager = this.exportManager;
+    this.experimentManager.visualizationDashboard = this.visualizationDashboard;
+    
+    this.sessionManager.initialize();
+    this.progressController.initialize();
+    this.dataManager.initialize();
+    this.exportManager.initialize();
+    this.visualizationDashboard.initialize();
+    this.experimentUI.initialize();
+    this.bindExperimentEvents();
+  }
+
+  bindExperimentEvents() {
+    window.addEventListener('experimentSessionStarted', () => {
+      if (this.speedController && !this.speedController.isInitialized) {
+        this.speedController.initialize(this);
+      }
+      if (this.metricsCollector && !this.metricsCollector.isInitialized) {
+        this.metricsCollector.initialize(this);
+      }
+      if (this.experimentUI && this.metricsCollector) {
+        this.experimentUI.setMetricsCollector(this.metricsCollector);
+      }
+      
+      window.gameCoordinator = this;
+    });
   }
 
   /**
@@ -148,6 +193,20 @@ class GameCoordinator {
    * Reveals the game underneath the loading covers and starts gameplay
    */
   startButtonClick() {
+    // Check if experiment is properly initialized
+    if (!this.experimentManager.userId) {
+      console.warn('[GameCoordinator] Cannot start game - no user ID set');
+      alert('Please enter a User ID and start an experiment session first.');
+      return;
+    }
+
+    // Check if experiment session is active
+    if (!this.experimentManager.isExperimentActive) {
+      console.warn('[GameCoordinator] Cannot start game - no active experiment session');
+      alert('Please start an experiment session first.');
+      return;
+    }
+
     this.leftCover.style.left = '-50%';
     this.rightCover.style.right = '-50%';
     this.mainMenu.style.opacity = 0;
@@ -163,6 +222,15 @@ class GameCoordinator {
       this.init();
     }
     this.startGameplay(true);
+    
+    // Dispatch game started event for experiment tracking
+    window.dispatchEvent(new CustomEvent('gameStarted', {
+      detail: {
+        sessionId: this.experimentManager.currentSession?.sessionId,
+        speedConfig: this.experimentManager.currentSession?.speedConfig,
+        timestamp: Date.now()
+      }
+    }));
   }
 
   /**
@@ -926,6 +994,9 @@ class GameCoordinator {
   gameOver() {
     localStorage.setItem('highScore', this.highScore);
 
+    // End current experiment session
+    this.endExperimentSession();
+
     new Timer(() => {
       this.displayText(
         {
@@ -944,12 +1015,273 @@ class GameCoordinator {
         this.rightCover.style.right = '0';
 
         setTimeout(() => {
-          this.mainMenu.style.opacity = 1;
-          this.gameStartButton.disabled = false;
-          this.mainMenu.style.visibility = 'visible';
+          this.showSessionTransition();
         }, 1000);
       }, 2500);
     }, 2250);
+  }
+
+  /**
+   * Ends the current experiment session and handles session completion
+   */
+  endExperimentSession() {
+    this.endExperimentSessionWithReason('game_over');
+  }
+
+  /**
+   * Shows session transition UI - either next session prompt or experiment completion
+   */
+  showSessionTransition() {
+    const completedSessions = this.experimentManager.getCompletedSessionsCount();
+    const remainingSessions = this.experimentManager.getRemainingSessionsCount();
+
+    if (remainingSessions > 0) {
+      // Show next session prompt
+      this.showNextSessionPrompt(completedSessions, remainingSessions);
+    } else {
+      // All sessions completed - show experiment completion
+      this.showExperimentCompletion();
+    }
+  }
+
+  /**
+   * Shows prompt for starting next session
+   */
+  showNextSessionPrompt(completed, remaining) {
+    const nextSessionId = completed + 1;
+    const nextPermutation = this.experimentManager.sessionOrder[completed];
+    const nextConfig = this.experimentManager.PERMUTATIONS[nextPermutation];
+
+    // Create session transition overlay
+    const transitionOverlay = document.createElement('div');
+    transitionOverlay.id = 'session-transition';
+    transitionOverlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 3000;
+      font-family: monospace;
+      color: white;
+    `;
+
+    transitionOverlay.innerHTML = `
+      <div style="text-align: center; padding: 40px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; border: 2px solid #4CAF50;">
+        <h2 style="color: #4CAF50; margin-bottom: 20px;">Session ${completed} Complete!</h2>
+        <p style="margin: 15px 0;">Sessions completed: ${completed}/9</p>
+        <p style="margin: 15px 0;">Sessions remaining: ${remaining}</p>
+        <hr style="margin: 30px 0; border-color: #333;">
+        <h3 style="color: #FFC107; margin-bottom: 15px;">Next Session Configuration:</h3>
+        <p style="margin: 10px 0;">Session ${nextSessionId}</p>
+        <p style="margin: 10px 0;">Pac-Man Speed: <strong>${nextConfig.pacman.toUpperCase()}</strong></p>
+        <p style="margin: 10px 0;">Ghost Speed: <strong>${nextConfig.ghost.toUpperCase()}</strong></p>
+        <div style="margin-top: 30px;">
+          <button id="start-next-session" style="
+            padding: 15px 30px;
+            margin: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: monospace;
+          ">Start Session ${nextSessionId}</button>
+          <button id="pause-experiment" style="
+            padding: 15px 30px;
+            margin: 10px;
+            background: #FF9800;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: monospace;
+          ">Pause Experiment</button>
+        </div>
+        <p style="margin-top: 20px; font-size: 12px; color: #666;">
+          Press Ctrl+D to view analytics dashboard
+        </p>
+      </div>
+    `;
+
+    document.body.appendChild(transitionOverlay);
+
+    // Bind button events
+    document.getElementById('start-next-session').addEventListener('click', () => {
+      this.startNextExperimentSession();
+      document.body.removeChild(transitionOverlay);
+    });
+
+    document.getElementById('pause-experiment').addEventListener('click', () => {
+      document.body.removeChild(transitionOverlay);
+      this.returnToMainMenu();
+    });
+  }
+
+  /**
+   * Shows experiment completion screen
+   */
+  showExperimentCompletion() {
+    // Dispatch experiment complete event
+    window.dispatchEvent(new CustomEvent('experimentComplete', {
+      detail: {
+        userId: this.experimentManager.userId,
+        completedSessions: 9,
+        totalSessions: 9,
+        timestamp: Date.now()
+      }
+    }));
+
+    const completionOverlay = document.createElement('div');
+    completionOverlay.id = 'experiment-completion';
+    completionOverlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 3000;
+      font-family: monospace;
+      color: white;
+    `;
+
+    completionOverlay.innerHTML = `
+      <div style="text-align: center; padding: 40px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; border: 2px solid #4CAF50;">
+        <h2 style="color: #4CAF50; margin-bottom: 20px;">🎉 Experiment Complete! 🎉</h2>
+        <p style="margin: 15px 0; font-size: 18px;">All 9 sessions completed successfully!</p>
+        <p style="margin: 15px 0;">User ID: <strong>${this.experimentManager.userId}</strong></p>
+        <hr style="margin: 30px 0; border-color: #333;">
+        <h3 style="color: #FFC107; margin-bottom: 15px;">Thank you for participating!</h3>
+        <p style="margin: 10px 0;">Your data has been saved and is ready for export.</p>
+        <div style="margin-top: 30px;">
+          <button id="view-results" style="
+            padding: 15px 30px;
+            margin: 10px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: monospace;
+          ">View Results Dashboard</button>
+          <button id="export-data" style="
+            padding: 15px 30px;
+            margin: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: monospace;
+          ">Export Data</button>
+          <button id="new-experiment" style="
+            padding: 15px 30px;
+            margin: 10px;
+            background: #FF9800;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: monospace;
+          ">Start New Experiment</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(completionOverlay);
+
+    // Bind button events
+    document.getElementById('view-results').addEventListener('click', () => {
+      this.visualizationDashboard.generateCompleteDashboard();
+      document.body.removeChild(completionOverlay);
+      this.returnToMainMenu();
+    });
+
+    document.getElementById('export-data').addEventListener('click', () => {
+      this.exportManager.exportData('json');
+      document.body.removeChild(completionOverlay);
+      this.returnToMainMenu();
+    });
+
+    document.getElementById('new-experiment').addEventListener('click', () => {
+      document.body.removeChild(completionOverlay);
+      this.resetForNewExperiment();
+    });
+  }
+
+  /**
+   * Starts the next experiment session
+   */
+  startNextExperimentSession() {
+    try {
+      const session = this.experimentManager.startSession();
+      
+      // Dispatch session started event
+      window.dispatchEvent(new CustomEvent('experimentSessionStarted', {
+        detail: {
+          sessionId: session.sessionId,
+          speedConfig: session.speedConfig,
+          completedSessions: this.experimentManager.getCompletedSessionsCount() - 1
+        }
+      }));
+
+      // Reset game state for new session
+      this.reset();
+      this.mainMenu.style.opacity = 1;
+      this.gameStartButton.disabled = false;
+      this.mainMenu.style.visibility = 'visible';
+      
+    } catch (error) {
+      console.error('[GameCoordinator] Failed to start next session:', error);
+      alert('Error starting next session: ' + error.message);
+      this.returnToMainMenu();
+    }
+  }
+
+  /**
+   * Returns to main menu
+   */
+  returnToMainMenu() {
+    this.mainMenu.style.opacity = 1;
+    this.gameStartButton.disabled = false;
+    this.mainMenu.style.visibility = 'visible';
+  }
+
+  /**
+   * Resets everything for a new experiment with different user
+   */
+  resetForNewExperiment() {
+    // Reset experiment manager
+    this.experimentManager.userId = null;
+    this.experimentManager.sessionOrder = [];
+    this.experimentManager.metrics = [];
+    this.experimentManager.currentSession = null;
+    this.experimentManager.currentMetrics = null;
+    this.experimentManager.isExperimentActive = false;
+
+    // Clear all storage for current experiment
+    localStorage.clear();
+
+    // Return to main menu
+    this.returnToMainMenu();
+
+    // Show experiment UI for new user setup
+    if (this.experimentUI) {
+      this.experimentUI.showUserIdPrompt();
+    }
   }
 
   /**
@@ -1015,7 +1347,7 @@ class GameCoordinator {
   }
 
   /**
-   * Resets the gameboard and prepares the next level
+   * Handles level completion - for research purposes, ends session instead of advancing level
    */
   advanceLevel() {
     this.allowPause = false;
@@ -1054,29 +1386,22 @@ class GameCoordinator {
               new Timer(() => {
                 this.mazeImg.src = `${imgBase}maze_blue.svg`;
                 new Timer(() => {
-                  this.mazeCover.style.visibility = 'visible';
+                  // Display level complete message
+                  this.displayText(
+                    {
+                      left: this.scaledTileSize * 8,
+                      top: this.scaledTileSize * 16.5,
+                    },
+                    'ready',  // Reusing "ready" text as "level complete"
+                    3000,
+                    this.scaledTileSize * 12,
+                    this.scaledTileSize * 2,
+                  );
+                  
                   new Timer(() => {
-                    this.mazeCover.style.visibility = 'hidden';
-                    this.level += 1;
-                    this.allowKeyPresses = true;
-                    this.entityList.forEach((entity) => {
-                      const entityRef = entity;
-                      if (entityRef.level) {
-                        entityRef.level = this.level;
-                      }
-                      entityRef.reset();
-                      if (entityRef instanceof Ghost) {
-                        entityRef.resetDefaultSpeed();
-                      }
-                      if (
-                        entityRef instanceof Pickup
-                        && entityRef.type !== 'fruit'
-                      ) {
-                        this.remainingDots += 1;
-                      }
-                    });
-                    this.startGameplay();
-                  }, 500);
+                    // For research purposes, end session when level is completed
+                    this.levelCompleteEndSession();
+                  }, 3000);
                 }, 250);
               }, 250);
             }, 250);
@@ -1084,6 +1409,53 @@ class GameCoordinator {
         }, 250);
       }, 250);
     }, 2000);
+  }
+
+  /**
+   * Ends session when level is completed (all dots collected)
+   */
+  levelCompleteEndSession() {
+    localStorage.setItem('highScore', this.highScore);
+
+    // End current experiment session with level complete reason
+    this.endExperimentSessionWithReason('level_complete');
+
+    this.leftCover.style.left = '0';
+    this.rightCover.style.right = '0';
+
+    setTimeout(() => {
+      this.showSessionTransition();
+    }, 1000);
+  }
+
+  /**
+   * Ends the current experiment session with a specific reason
+   */
+  endExperimentSessionWithReason(reason) {
+    if (this.experimentManager.isExperimentActive) {
+      // Dispatch game ended event with reason
+      window.dispatchEvent(new CustomEvent('gameEnded', {
+        detail: {
+          sessionId: this.experimentManager.currentSession?.sessionId,
+          finalScore: this.points,
+          gameTime: Date.now() - this.gameStartTime,
+          reason: reason, // 'level_complete' or 'game_over'
+          timestamp: Date.now()
+        }
+      }));
+
+      // End the session in experiment manager
+      this.experimentManager.endSession();
+      
+      // Dispatch session ended event for other components
+      window.dispatchEvent(new CustomEvent('experimentSessionEnded', {
+        detail: {
+          sessionId: this.experimentManager.currentSession?.sessionId || 'unknown',
+          completedSessions: this.experimentManager.getCompletedSessionsCount(),
+          reason: reason
+        }
+      }));
+    }
   }
 
   /**

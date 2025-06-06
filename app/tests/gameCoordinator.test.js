@@ -2,6 +2,26 @@ const assert = require('assert');
 const sinon = require('sinon');
 const GameCoordinator = require('../scripts/core/gameCoordinator');
 
+// Mock experiment classes
+global.ExperimentManager = function() {
+  this.initializeUser = sinon.stub();
+  this.startSession = sinon.stub();
+  this.endSession = sinon.stub();
+};
+global.ExperimentUI = function() {
+  this.initialize = sinon.stub();
+  this.logMetric = sinon.stub();
+  this.setMetricsCollector = sinon.stub();
+};
+global.SpeedController = function() {
+  this.initialize = sinon.stub();
+  this.isInitialized = false;
+};
+global.MetricsCollector = function() {
+  this.initialize = sinon.stub();
+  this.isInitialized = false;
+};
+
 let comp;
 const mazeArray = [
   ['X', 'X', 'X'],

@@ -111,6 +111,7 @@ class ExperimentManager {
     this.gameStartTime = Date.now();
     this.isExperimentActive = true;
 
+    console.log('[ExperimentManager] 🎯 About to apply speed configuration:', config);
     this.applySpeedConfiguration(config);
     this.saveCurrentSession();
     
@@ -150,13 +151,21 @@ class ExperimentManager {
     const pacmanMultiplier = this.SPEED_CONFIGS.pacman[config.pacman];
     const ghostMultiplier = this.SPEED_CONFIGS.ghost[config.ghost];
 
-    window.dispatchEvent(new CustomEvent('speedConfigChanged', {
+    console.log('[ExperimentManager] 🚀 DISPATCHING SPEED CONFIG EVENT');
+    console.log('[ExperimentManager] Config:', config);
+    console.log('[ExperimentManager] Pac-Man multiplier:', pacmanMultiplier);
+    console.log('[ExperimentManager] Ghost multiplier:', ghostMultiplier);
+
+    const event = new CustomEvent('speedConfigChanged', {
       detail: {
         pacmanMultiplier,
         ghostMultiplier,
         config
       }
-    }));
+    });
+    
+    window.dispatchEvent(event);
+    console.log('[ExperimentManager] ✅ Speed config event dispatched');
   }
 
   logEvent(type, data = {}) {

@@ -1252,9 +1252,14 @@ class GameCoordinator {
 
   bindExperimentEvents() {
     window.addEventListener('experimentSessionStarted', () => {
-      if (this.speedController && !this.speedController.isInitialized) {
-        this.speedController.initialize(this);
-      }
+      // Wait a bit for game to be ready, then initialize speed controller
+      setTimeout(() => {
+        if (this.speedController && !this.speedController.isInitialized) {
+          console.log('[GameCoordinator] 🚀 Initializing SpeedController with game entities');
+          this.speedController.initialize(this);
+        }
+      }, 2000); // Wait 2 seconds for game to be fully loaded
+      
       if (this.metricsCollector && !this.metricsCollector.isInitialized) {
         this.metricsCollector.initialize(this);
       }
@@ -3592,6 +3597,7 @@ class ExperimentManager {
     this.gameStartTime = Date.now();
     this.isExperimentActive = true;
 
+    console.log('[ExperimentManager] 🎯 About to apply speed configuration:', config);
     this.applySpeedConfiguration(config);
     this.saveCurrentSession();
     
@@ -3631,13 +3637,21 @@ class ExperimentManager {
     const pacmanMultiplier = this.SPEED_CONFIGS.pacman[config.pacman];
     const ghostMultiplier = this.SPEED_CONFIGS.ghost[config.ghost];
 
-    window.dispatchEvent(new CustomEvent('speedConfigChanged', {
+    console.log('[ExperimentManager] 🚀 DISPATCHING SPEED CONFIG EVENT');
+    console.log('[ExperimentManager] Config:', config);
+    console.log('[ExperimentManager] Pac-Man multiplier:', pacmanMultiplier);
+    console.log('[ExperimentManager] Ghost multiplier:', ghostMultiplier);
+
+    const event = new CustomEvent('speedConfigChanged', {
       detail: {
         pacmanMultiplier,
         ghostMultiplier,
         config
       }
-    }));
+    });
+    
+    window.dispatchEvent(event);
+    console.log('[ExperimentManager] ✅ Speed config event dispatched');
   }
 
   logEvent(type, data = {}) {
@@ -6644,7 +6658,8 @@ class SpeedController {
 
   storeOriginalSpeeds() {
     if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
-      console.warn('[SpeedController] ❌ Game entities not ready, deferring speed storage');
+      console.warn('[SpeedController] ❌ Game entities not ready, will retry in 500ms');
+      setTimeout(() => this.storeOriginalSpeeds(), 500);
       return;
     }
 
@@ -6670,7 +6685,10 @@ class SpeedController {
   }
 
   bindEvents() {
+    console.log('[SpeedController] 🎧 Binding to speedConfigChanged event');
+    
     window.addEventListener('speedConfigChanged', (e) => {
+      console.log('[SpeedController] 📡 RECEIVED speedConfigChanged event!', e.detail);
       this.applySpeedConfiguration(e.detail);
     });
 
@@ -6696,7 +6714,15 @@ class SpeedController {
     }
 
     if (this.originalSpeeds.pacman === null) {
+      console.log('[SpeedController] ⏳ Original speeds not stored yet, storing now...');
       this.storeOriginalSpeeds();
+      
+      // If still not ready after attempting to store, retry in 1 second
+      if (this.originalSpeeds.pacman === null) {
+        console.log('[SpeedController] ⏰ Retrying speed application in 1 second...');
+        setTimeout(() => this.applySpeedConfiguration({ pacmanMultiplier, ghostMultiplier, config }), 1000);
+        return;
+      }
     }
 
     this.applyPacmanSpeed(pacmanMultiplier);

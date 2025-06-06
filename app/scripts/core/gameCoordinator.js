@@ -142,9 +142,14 @@ class GameCoordinator {
 
   bindExperimentEvents() {
     window.addEventListener('experimentSessionStarted', () => {
-      if (this.speedController && !this.speedController.isInitialized) {
-        this.speedController.initialize(this);
-      }
+      // Wait a bit for game to be ready, then initialize speed controller
+      setTimeout(() => {
+        if (this.speedController && !this.speedController.isInitialized) {
+          console.log('[GameCoordinator] 🚀 Initializing SpeedController with game entities');
+          this.speedController.initialize(this);
+        }
+      }, 2000); // Wait 2 seconds for game to be fully loaded
+      
       if (this.metricsCollector && !this.metricsCollector.isInitialized) {
         this.metricsCollector.initialize(this);
       }

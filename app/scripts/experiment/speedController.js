@@ -22,7 +22,8 @@ class SpeedController {
 
   storeOriginalSpeeds() {
     if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
-      console.warn('[SpeedController] ❌ Game entities not ready, deferring speed storage');
+      console.warn('[SpeedController] ❌ Game entities not ready, will retry in 500ms');
+      setTimeout(() => this.storeOriginalSpeeds(), 500);
       return;
     }
 
@@ -48,7 +49,10 @@ class SpeedController {
   }
 
   bindEvents() {
+    console.log('[SpeedController] 🎧 Binding to speedConfigChanged event');
+    
     window.addEventListener('speedConfigChanged', (e) => {
+      console.log('[SpeedController] 📡 RECEIVED speedConfigChanged event!', e.detail);
       this.applySpeedConfiguration(e.detail);
     });
 
@@ -74,7 +78,15 @@ class SpeedController {
     }
 
     if (this.originalSpeeds.pacman === null) {
+      console.log('[SpeedController] ⏳ Original speeds not stored yet, storing now...');
       this.storeOriginalSpeeds();
+      
+      // If still not ready after attempting to store, retry in 1 second
+      if (this.originalSpeeds.pacman === null) {
+        console.log('[SpeedController] ⏰ Retrying speed application in 1 second...');
+        setTimeout(() => this.applySpeedConfiguration({ pacmanMultiplier, ghostMultiplier, config }), 1000);
+        return;
+      }
     }
 
     this.applyPacmanSpeed(pacmanMultiplier);

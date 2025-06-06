@@ -131,7 +131,12 @@
 
       <script>
         window.onload = () => {
-          let gameCoordinator = new GameCoordinator();
+          window.gameCoordinator = new GameCoordinator();
+          
+          // Initialize experiment system after all classes are loaded
+          setTimeout(() => {
+            window.gameCoordinator.initializeExperiment();
+          }, 100);
         }
       </script>
     </div>

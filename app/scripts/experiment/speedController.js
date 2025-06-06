@@ -58,7 +58,10 @@ class SpeedController {
   applySpeedConfiguration(detail) {
     const { pacmanMultiplier, ghostMultiplier, config } = detail;
 
-    console.log('[SpeedController] Applying speed config:', config);
+    console.log('[SpeedController] ⚡ APPLYING SPEED CONFIG ⚡');
+    console.log('[SpeedController] Config:', config);
+    console.log('[SpeedController] Pac-Man multiplier:', pacmanMultiplier);
+    console.log('[SpeedController] Ghost multiplier:', ghostMultiplier);
 
     this.currentMultipliers.pacman = pacmanMultiplier;
     this.currentMultipliers.ghost = ghostMultiplier;
@@ -80,13 +83,14 @@ class SpeedController {
 
   applyPacmanSpeed(multiplier) {
     if (!this.gameCoordinator.pacman || this.originalSpeeds.pacman === null) {
+      console.log('[SpeedController] ❌ Cannot apply Pac-Man speed - game not ready');
       return;
     }
 
     const newSpeed = this.originalSpeeds.pacman * multiplier;
     this.gameCoordinator.pacman.velocityPerMs = newSpeed;
 
-    console.log(`[SpeedController] Pacman speed: ${this.originalSpeeds.pacman} * ${multiplier} = ${newSpeed}`);
+    console.log(`[SpeedController] 🟡 Pac-Man speed: ${this.originalSpeeds.pacman} * ${multiplier} = ${newSpeed}`);
   }
 
   applyGhostSpeeds(multiplier) {
@@ -112,7 +116,7 @@ class SpeedController {
       ghost.defaultSpeed = originalSpeeds[currentSpeedType] * multiplier;
       ghost.velocityPerMs = ghost.defaultSpeed;
 
-      console.log(`[SpeedController] ${ghost.name} speeds multiplied by ${multiplier}`);
+      console.log(`[SpeedController] 👻 ${ghost.name} speeds multiplied by ${multiplier} (${originalSpeeds[currentSpeedType]} -> ${ghost.defaultSpeed})`);
     });
   }
 

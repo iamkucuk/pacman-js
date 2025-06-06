@@ -111,8 +111,6 @@ class GameCoordinator {
     link.onload = this.preloadAssets.bind(this);
 
     head.appendChild(link);
-    
-    this.initializeExperiment();
   }
 
   initializeExperiment() {

@@ -35,9 +35,30 @@
           <img src="app/style/graphics/brent_ward_logo_black.svg" alt="Brent Ward Website Link"/>
         </a>
         <img id='logo' class='logo' src='app/style/graphics/pacman_logo.png' alt='Pacman Logo'>
-        <button id='game-start' class='game-start'>
-          PLAY
-        </button>
+        
+        <!-- User ID Input Section (shown first) -->
+        <div id='user-id-section' class='user-id-section'>
+          <h3 class='experiment-title'>Pac-Man Speed Research Study</h3>
+          <p class='experiment-description'>Help us understand how speed affects gameplay</p>
+          <div class='user-id-input-container'>
+            <label for='main-user-id-input' class='user-id-label'>Enter your User ID:</label>
+            <input type='text' id='main-user-id-input' class='user-id-input' placeholder='Enter unique identifier' />
+            <button id='confirm-user-id' class='confirm-user-id-btn'>Continue</button>
+          </div>
+          <div id='user-id-error' class='user-id-error'></div>
+        </div>
+        
+        <!-- Session Info Section (shown after user ID confirmed) -->
+        <div id='session-info-section' class='session-info-section' style='display: none;'>
+          <div id='session-details' class='session-details'>
+            <p class='session-text'><strong>User:</strong> <span id='display-user-id'></span></p>
+            <p class='session-text'><strong>Session:</strong> <span id='display-session-info'></span></p>
+            <p class='session-text'><strong>Speed Config:</strong> <span id='display-speed-config'></span></p>
+          </div>
+          <button id='game-start' class='game-start' style='display: none;'>
+            PLAY
+          </button>
+        </div>
       </div>
 
       <div class='header-buttons'>

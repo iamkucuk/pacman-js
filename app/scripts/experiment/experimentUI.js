@@ -25,34 +25,21 @@ class ExperimentUI {
       existingInterface.remove();
     }
 
+    // Create a minimal debug-only interface since main menu now handles user input
     const interfaceHTML = `
-      <div id="experiment-interface" style="position: fixed; top: 10px; left: 10px; z-index: 1000; background: rgba(0,0,0,0.8); color: white; padding: 15px; border-radius: 8px; font-family: monospace; max-width: 350px;">
-        <div id="experiment-login" style="display: block;">
-          <h3 style="margin: 0 0 10px 0; color: #ffff00;">Pac-Man Speed Experiment</h3>
-          <p style="margin: 0 0 10px 0; font-size: 12px;">Research study: Speed configuration effects on gameplay</p>
-          <div style="margin-bottom: 10px;">
-            <label style="display: block; margin-bottom: 5px;">Enter User ID:</label>
-            <input type="text" id="user-id-input" style="width: 100%; padding: 5px; border: none; border-radius: 3px; font-family: monospace;" placeholder="Enter unique identifier">
-          </div>
-          <button id="start-experiment-btn" style="width: 100%; padding: 8px; background: #00ff00; border: none; border-radius: 3px; cursor: pointer; font-weight: bold;">Start Experiment</button>
-          <div id="login-error" style="color: #ff0000; margin-top: 10px; display: none;"></div>
-        </div>
-        
+      <div id="experiment-interface" style="position: fixed; top: 10px; right: 10px; z-index: 1000; background: rgba(0,0,0,0.7); color: white; padding: 10px; border-radius: 5px; font-family: monospace; max-width: 300px; font-size: 11px; ${this.DEBUG ? '' : 'display: none;'}">
         <div id="experiment-session" style="display: none;">
-          <h3 style="margin: 0 0 10px 0; color: #ffff00;">Experiment Active</h3>
-          <div id="session-info" style="margin-bottom: 10px; font-size: 12px;"></div>
-          <div id="speed-config" style="margin-bottom: 10px; font-size: 12px;"></div>
-          <div id="progress-info" style="margin-bottom: 10px; font-size: 12px;"></div>
-          <div id="metrics-display" style="margin-bottom: 10px; font-size: 11px; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 3px;"></div>
-          <button id="end-session-btn" style="width: 100%; padding: 6px; background: #ff4444; border: none; border-radius: 3px; cursor: pointer; margin-top: 5px;">End Session</button>
-          <button id="export-data-btn" style="width: 100%; padding: 6px; background: #4444ff; border: none; border-radius: 3px; cursor: pointer; margin-top: 5px;">Export Data</button>
+          <h4 style="margin: 0 0 5px 0; color: #ffff00; font-size: 12px;">Live Metrics</h4>
+          <div id="metrics-display" style="margin-bottom: 8px; font-size: 10px; background: rgba(0,0,0,0.3); padding: 6px; border-radius: 3px;"></div>
+          <button id="end-session-btn" style="width: 100%; padding: 4px; background: #ff4444; border: none; border-radius: 2px; cursor: pointer; font-size: 10px;">End Session</button>
+          <button id="export-data-btn" style="width: 100%; padding: 4px; background: #4444ff; border: none; border-radius: 2px; cursor: pointer; margin-top: 3px; font-size: 10px;">Export Data</button>
         </div>
         
         <div id="experiment-complete" style="display: none;">
-          <h3 style="margin: 0 0 10px 0; color: #00ff00;">Experiment Complete!</h3>
-          <p style="margin: 0 0 10px 0; font-size: 12px;">All 9 sessions completed. Thank you for participating!</p>
-          <button id="export-final-data-btn" style="width: 100%; padding: 8px; background: #00ff00; border: none; border-radius: 3px; cursor: pointer;">Export Final Data</button>
-          <button id="reset-experiment-btn" style="width: 100%; padding: 6px; background: #ff4444; border: none; border-radius: 3px; cursor: pointer; margin-top: 5px;">Reset Experiment</button>
+          <h4 style="margin: 0 0 5px 0; color: #00ff00; font-size: 12px;">Experiment Complete!</h4>
+          <p style="margin: 0 0 8px 0; font-size: 10px;">All 9 sessions completed.</p>
+          <button id="export-final-data-btn" style="width: 100%; padding: 4px; background: #00ff00; border: none; border-radius: 2px; cursor: pointer; font-size: 10px;">Export Data</button>
+          <button id="reset-experiment-btn" style="width: 100%; padding: 4px; background: #ff4444; border: none; border-radius: 2px; cursor: pointer; margin-top: 3px; font-size: 10px;">Reset</button>
         </div>
 
         ${this.DEBUG ? this.createDebugPanel() : ''}
@@ -63,21 +50,9 @@ class ExperimentUI {
   }
 
   showUserIdPrompt() {
-    // Show login section, hide others
-    this.showSection('experiment-login');
-
-    // Clear and focus input field
-    const userIdInput = document.getElementById('user-id-input');
-    if (userIdInput) {
-      userIdInput.value = '';
-      userIdInput.focus();
-    }
-
-    // Clear any error messages
-    const errorDiv = document.getElementById('login-error');
-    if (errorDiv) {
-      errorDiv.style.display = 'none';
-    }
+    // User ID input is now handled by the main menu
+    // This method kept for compatibility but does nothing
+    console.log('[ExperimentUI] User ID input is now handled by main menu');
   }
 
   createDebugPanel() {
@@ -93,16 +68,10 @@ class ExperimentUI {
   bindEvents() {
     if (this.isTestEnvironment) return;
 
-    const startBtn = document.getElementById('start-experiment-btn');
     const endBtn = document.getElementById('end-session-btn');
     const exportBtn = document.getElementById('export-data-btn');
     const exportFinalBtn = document.getElementById('export-final-data-btn');
     const resetBtn = document.getElementById('reset-experiment-btn');
-    const userIdInput = document.getElementById('user-id-input');
-
-    if (startBtn) {
-      startBtn.addEventListener('click', () => this.handleStartExperiment());
-    }
 
     if (endBtn) {
       endBtn.addEventListener('click', () => this.handleEndSession());
@@ -120,60 +89,27 @@ class ExperimentUI {
       resetBtn.addEventListener('click', () => this.handleResetExperiment());
     }
 
-    if (userIdInput) {
-      userIdInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-          this.handleStartExperiment();
-        }
-      });
-    }
-
     if (this.DEBUG) {
       const toggleDebugBtn = document.getElementById('toggle-debug');
       if (toggleDebugBtn) {
         toggleDebugBtn.addEventListener('click', () => this.toggleDebugDetails());
       }
     }
-  }
 
-  handleStartExperiment() {
-    const userIdInput = document.getElementById('user-id-input');
-    const errorDiv = document.getElementById('login-error');
-
-    try {
-      const userId = userIdInput.value.trim();
-      if (!userId) {
-        throw new Error('Please enter a User ID');
-      }
-
-      this.experimentManager.initializeUser(userId);
-
-      const completedSessions = this.experimentManager.getCompletedSessionsCount();
-      if (completedSessions >= 9) {
-        this.showCompleteInterface();
-        return;
-      }
-
-      this.experimentManager.startSession();
+    // Listen for experiment events to show/hide the interface
+    window.addEventListener('experimentSessionStarted', () => {
       this.showSessionInterface();
-      this.updateSessionDisplay();
+    });
 
-      if (errorDiv) {
-        errorDiv.style.display = 'none';
-      }
+    window.addEventListener('experimentSessionEnded', () => {
+      this.hideAllInterfaces();
+    });
 
-      window.dispatchEvent(new window.CustomEvent('experimentSessionStarted', {
-        detail: this.experimentManager.getCurrentSessionInfo(),
-      }));
-
-      this.startMetricsDisplay();
-    } catch (error) {
-      if (errorDiv) {
-        errorDiv.textContent = error.message;
-        errorDiv.style.display = 'block';
-      }
-    }
+    window.addEventListener('experimentComplete', () => {
+      this.showCompleteInterface();
+    });
   }
+
 
   handleEndSession() {
     try {
@@ -237,11 +173,8 @@ class ExperimentUI {
   showLoginInterface() {
     if (this.isTestEnvironment) return;
 
+    // Login is now handled by main menu, so hide all experiment UI sections
     this.hideAllInterfaces();
-    const loginDiv = document.getElementById('experiment-login');
-    if (loginDiv) {
-      loginDiv.style.display = 'block';
-    }
   }
 
   showSessionInterface() {
@@ -267,7 +200,7 @@ class ExperimentUI {
   hideAllInterfaces() {
     if (this.isTestEnvironment) return;
 
-    const interfaces = ['experiment-login', 'experiment-session', 'experiment-complete'];
+    const interfaces = ['experiment-session', 'experiment-complete'];
     interfaces.forEach((id) => {
       const element = document.getElementById(id);
       if (element) {

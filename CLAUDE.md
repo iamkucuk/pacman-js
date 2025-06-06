@@ -146,3 +146,123 @@ Prefer asking Claude to:
 # Document What Works
 
 Update your docs and README.AI.md and README.md as you progress and extensively.
+
+## Change Logging Requirements
+
+**MANDATORY**: With each modification to the codebase, you MUST log changes in this file. This maintains a complete development history and helps track the evolution of the experimental platform.
+
+### Change Log Format
+
+Add entries at the bottom of this file using the following format:
+
+```markdown
+## CHANGE LOG
+
+### [YYYY-MM-DD] - Change Description
+**Files Modified:** 
+- `path/to/file1.js` - Description of changes
+- `path/to/file2.js` - Description of changes
+
+**Type:** [Bug Fix | Feature | Enhancement | Refactor | Documentation]
+
+**Severity:** [Critical | High | Medium | Low]
+
+**Description:**
+Brief description of what was changed and why.
+
+**Impact:**
+- How this affects the experiment functionality
+- Any performance implications
+- Testing implications
+
+**Related Issues:**
+- Links to any related bugs or requirements
+- Test failures this addresses
+
+**Testing:**
+- New tests added
+- Existing tests modified
+- Manual testing performed
+
+---
+```
+
+### Change Categories
+
+- **Bug Fix**: Resolving identified issues or test failures
+- **Feature**: Adding new experimental capabilities
+- **Enhancement**: Improving existing functionality
+- **Refactor**: Code organization without functional changes
+- **Documentation**: Updates to docs, comments, or README files
+
+### Logging Rules
+
+1. **Every code change must be logged** - No exceptions
+2. **Log immediately after making changes** - Don't batch multiple changes
+3. **Be specific about file locations** - Include line numbers for significant changes
+4. **Include impact assessment** - How does this affect the experiment?
+5. **Reference any tests** - What testing was done to verify the change?
+6. **Cross-reference issues** - Link to any bugs or requirements addressed
+
+### Example Entry
+
+```markdown
+### [2024-06-06] - Fixed CustomEvent Constructor Issue
+**Files Modified:** 
+- `app/scripts/experiment/experimentUI.js:165` - Added CustomEvent polyfill for test environment
+- `app/tests/experimentUI.test.js:12-20` - Added proper global mocking setup
+
+**Type:** Bug Fix
+
+**Severity:** Critical
+
+**Description:**
+Fixed TypeError where CustomEvent constructor was not available in Node.js test environment, causing experiment UI tests to fail.
+
+**Impact:**
+- Resolves critical test failures in experiment UI
+- Enables proper event dispatching in both browser and test environments
+- No performance impact on production code
+
+**Related Issues:**
+- Addresses test failure: "TypeError: window.CustomEvent is not a constructor"
+- Related to npm test blocking git push operations
+
+**Testing:**
+- Added CustomEvent mock in test setup
+- Verified experimentUI.test.js now passes
+- Confirmed browser functionality unchanged
+
+---
+```
+
+This change logging system will help maintain code quality, track the evolution of experimental features, and provide valuable context for future development work.
+
+## CHANGE LOG
+
+### [2024-06-06] - Added Mandatory Change Logging Requirements
+**Files Modified:** 
+- `CLAUDE.md:150-239` - Added comprehensive change logging requirements and guidelines
+
+**Type:** Documentation
+
+**Severity:** Medium
+
+**Description:**
+Added mandatory change logging requirements to ensure all codebase modifications are properly documented. This includes detailed format specifications, change categories, logging rules, and example entries.
+
+**Impact:**
+- Establishes systematic tracking of all code changes
+- Improves code maintainability and development history
+- Provides clear guidelines for future contributors
+- No functional impact on experimental platform
+
+**Related Issues:**
+- Addresses need for better change tracking identified in repository analysis
+- Supports requirement for comprehensive documentation
+
+**Testing:**
+- No testing required (documentation only)
+- Verified format renders correctly in markdown
+
+---

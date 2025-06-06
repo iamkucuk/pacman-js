@@ -93,6 +93,9 @@ class GameCoordinator {
       this.mazeArray[rowIndex] = row[0].split('');
     });
 
+    // Main user ID flow event listeners
+    this.setupUserIdFlow();
+    
     this.gameStartButton.addEventListener(
       'click',
       this.startButtonClick.bind(this),
@@ -111,6 +114,156 @@ class GameCoordinator {
     link.onload = this.preloadAssets.bind(this);
 
     head.appendChild(link);
+  }
+
+  setupUserIdFlow() {
+    const confirmUserIdBtn = document.getElementById('confirm-user-id');
+    const userIdInput = document.getElementById('main-user-id-input');
+    const userIdError = document.getElementById('user-id-error');
+
+    if (confirmUserIdBtn && userIdInput) {
+      confirmUserIdBtn.addEventListener('click', () => this.handleUserIdConfirmation());
+      
+      userIdInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          this.handleUserIdConfirmation();
+        }
+      });
+
+      userIdInput.addEventListener('input', () => {
+        // Clear error when user starts typing
+        if (userIdError) {
+          userIdError.textContent = '';
+        }
+      });
+    }
+  }
+
+  handleUserIdConfirmation() {
+    const userIdInput = document.getElementById('main-user-id-input');
+    const userIdError = document.getElementById('user-id-error');
+    const userIdSection = document.getElementById('user-id-section');
+    const sessionInfoSection = document.getElementById('session-info-section');
+
+    if (!userIdInput || !userIdError || !userIdSection || !sessionInfoSection) {
+      console.error('[GameCoordinator] Required UI elements not found');
+      return;
+    }
+
+    try {
+      const userId = userIdInput.value.trim();
+      if (!userId) {
+        throw new Error('Please enter a User ID');
+      }
+
+      // Initialize experiment with the user ID
+      if (!this.experimentManager) {
+        console.error('[GameCoordinator] Experiment manager not initialized');
+        throw new Error('System not ready. Please refresh the page.');
+      }
+
+      this.experimentManager.initializeUser(userId);
+      
+      // Check if user has completed all sessions
+      const completedSessions = this.experimentManager.getCompletedSessionsCount();
+      if (completedSessions >= 9) {
+        // Show experiment complete message
+        this.showExperimentCompleteMessage();
+        return;
+      }
+
+      // Start next session
+      const session = this.experimentManager.startSession();
+      
+      // Update display elements
+      this.updateSessionDisplay(session);
+      
+      // Hide user ID section and show session info
+      userIdSection.style.display = 'none';
+      sessionInfoSection.style.display = 'block';
+      
+      // Show the PLAY button
+      const gameStartButton = document.getElementById('game-start');
+      if (gameStartButton) {
+        gameStartButton.style.display = 'block';
+      }
+
+      // Clear any errors
+      userIdError.textContent = '';
+
+      // Dispatch experiment session started event
+      window.dispatchEvent(new CustomEvent('experimentSessionStarted', {
+        detail: {
+          sessionId: session.sessionId,
+          speedConfig: session.speedConfig,
+          completedSessions: completedSessions
+        }
+      }));
+
+      console.log('[GameCoordinator] User ID confirmed, session started:', session);
+
+    } catch (error) {
+      console.error('[GameCoordinator] Error confirming user ID:', error);
+      userIdError.textContent = error.message;
+    }
+  }
+
+  updateSessionDisplay(session) {
+    const displayUserId = document.getElementById('display-user-id');
+    const displaySessionInfo = document.getElementById('display-session-info');
+    const displaySpeedConfig = document.getElementById('display-speed-config');
+
+    if (displayUserId) {
+      displayUserId.textContent = session.userId;
+    }
+
+    if (displaySessionInfo) {
+      displaySessionInfo.textContent = `${session.sessionId}/9`;
+    }
+
+    if (displaySpeedConfig) {
+      displaySpeedConfig.textContent = `Pac-Man: ${session.speedConfig.pacman.toUpperCase()}, Ghosts: ${session.speedConfig.ghost.toUpperCase()}`;
+    }
+  }
+
+  showExperimentCompleteMessage() {
+    const userIdSection = document.getElementById('user-id-section');
+    const sessionInfoSection = document.getElementById('session-info-section');
+    
+    if (userIdSection) {
+      userIdSection.innerHTML = `
+        <h3 class='experiment-title'>🎉 Experiment Complete! 🎉</h3>
+        <p class='experiment-description'>User "${this.experimentManager.userId}" has completed all 9 sessions.</p>
+        <p class='experiment-description'>Thank you for participating in our research!</p>
+        <div style="margin-top: 20px;">
+          <button id="export-final-data" class="confirm-user-id-btn">Export Data</button>
+          <button id="start-new-experiment" class="confirm-user-id-btn" style="margin-left: 10px;">New Experiment</button>
+        </div>
+      `;
+
+      // Bind new button events
+      const exportBtn = document.getElementById('export-final-data');
+      const newExpBtn = document.getElementById('start-new-experiment');
+      
+      if (exportBtn) {
+        exportBtn.addEventListener('click', () => {
+          if (this.exportManager) {
+            this.exportManager.exportData('json');
+          }
+        });
+      }
+
+      if (newExpBtn) {
+        newExpBtn.addEventListener('click', () => {
+          this.resetForNewExperiment();
+          location.reload(); // Refresh page for clean state
+        });
+      }
+    }
+
+    if (sessionInfoSection) {
+      sessionInfoSection.style.display = 'none';
+    }
   }
 
   initializeExperiment() {
@@ -1138,13 +1291,13 @@ class GameCoordinator {
 
     // Bind button events
     document.getElementById('start-next-session').addEventListener('click', () => {
-      this.startNextExperimentSession();
+      this.continueToNextSession();
       document.body.removeChild(transitionOverlay);
     });
 
     document.getElementById('pause-experiment').addEventListener('click', () => {
       document.body.removeChild(transitionOverlay);
-      this.returnToMainMenu();
+      this.returnToMainMenuWithNewSession();
     });
   }
 
@@ -1247,11 +1400,29 @@ class GameCoordinator {
   }
 
   /**
-   * Starts the next experiment session
+   * Continues to next session directly (used by session transition overlay)
    */
-  startNextExperimentSession() {
+  continueToNextSession() {
     try {
       const session = this.experimentManager.startSession();
+      
+      // Update the session display
+      this.updateSessionDisplay(session);
+      
+      // Show the main menu with session info already populated
+      this.reset();
+      this.mainMenu.style.opacity = 1;
+      this.gameStartButton.disabled = false;
+      this.mainMenu.style.visibility = 'visible';
+      
+      // Make sure session info is showing and PLAY button is visible
+      const userIdSection = document.getElementById('user-id-section');
+      const sessionInfoSection = document.getElementById('session-info-section');
+      const gameStartButton = document.getElementById('game-start');
+      
+      if (userIdSection) userIdSection.style.display = 'none';
+      if (sessionInfoSection) sessionInfoSection.style.display = 'block';
+      if (gameStartButton) gameStartButton.style.display = 'block';
       
       // Dispatch session started event
       window.dispatchEvent(new CustomEvent('experimentSessionStarted', {
@@ -1261,18 +1432,40 @@ class GameCoordinator {
           completedSessions: this.experimentManager.getCompletedSessionsCount() - 1
         }
       }));
-
-      // Reset game state for new session
-      this.reset();
-      this.mainMenu.style.opacity = 1;
-      this.gameStartButton.disabled = false;
-      this.mainMenu.style.visibility = 'visible';
       
     } catch (error) {
-      console.error('[GameCoordinator] Failed to start next session:', error);
+      console.error('[GameCoordinator] Failed to continue to next session:', error);
       alert('Error starting next session: ' + error.message);
-      this.returnToMainMenu();
+      this.returnToMainMenuWithNewSession();
     }
+  }
+
+  /**
+   * Returns to main menu but prepares for new session selection
+   */
+  returnToMainMenuWithNewSession() {
+    this.mainMenu.style.opacity = 1;
+    this.gameStartButton.disabled = false;
+    this.mainMenu.style.visibility = 'visible';
+    
+    // Reset to user ID input for potential different user
+    const userIdSection = document.getElementById('user-id-section');
+    const sessionInfoSection = document.getElementById('session-info-section');
+    const userIdInput = document.getElementById('main-user-id-input');
+    
+    if (userIdSection) userIdSection.style.display = 'block';
+    if (sessionInfoSection) sessionInfoSection.style.display = 'none';
+    if (userIdInput) {
+      userIdInput.value = this.experimentManager.userId || '';
+      userIdInput.focus();
+    }
+  }
+
+  /**
+   * Starts the next experiment session (legacy method for compatibility)
+   */
+  startNextExperimentSession() {
+    this.continueToNextSession();
   }
 
   /**

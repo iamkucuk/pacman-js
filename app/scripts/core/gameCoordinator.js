@@ -153,6 +153,9 @@ class GameCoordinator {
       }
       
       window.gameCoordinator = this;
+      
+      // Expose debug functions globally
+      window.debugSpeeds = () => this.speedController.debugCurrentSpeeds();
     });
   }
 

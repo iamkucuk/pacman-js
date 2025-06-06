@@ -1263,6 +1263,9 @@ class GameCoordinator {
       }
       
       window.gameCoordinator = this;
+      
+      // Expose debug functions globally
+      window.debugSpeeds = () => this.speedController.debugCurrentSpeeds();
     });
   }
 
@@ -6641,11 +6644,12 @@ class SpeedController {
 
   storeOriginalSpeeds() {
     if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
-      console.warn('[SpeedController] Game entities not ready, deferring speed storage');
+      console.warn('[SpeedController] ❌ Game entities not ready, deferring speed storage');
       return;
     }
 
     this.originalSpeeds.pacman = this.gameCoordinator.pacman.velocityPerMs;
+    console.log('[SpeedController] 📦 Stored Pac-Man original speed:', this.originalSpeeds.pacman);
 
     if (this.gameCoordinator.ghosts) {
       this.gameCoordinator.ghosts.forEach((ghost) => {
@@ -6658,10 +6662,11 @@ class SpeedController {
           eyeSpeed: ghost.eyeSpeed,
           defaultSpeed: ghost.defaultSpeed,
         };
+        console.log(`[SpeedController] 📦 Stored ${ghost.name} original speeds:`, this.originalSpeeds.ghosts[ghost.name]);
       });
     }
 
-    console.log('[SpeedController] Original speeds stored:', this.originalSpeeds);
+    console.log('[SpeedController] ✅ All original speeds stored successfully');
   }
 
   bindEvents() {
@@ -6686,7 +6691,7 @@ class SpeedController {
     this.currentMultipliers.ghost = ghostMultiplier;
 
     if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
-      console.warn('[SpeedController] Game entities not ready for speed application');
+      console.warn('[SpeedController] ❌ Game entities not ready for speed application');
       return;
     }
 
@@ -6697,7 +6702,54 @@ class SpeedController {
     this.applyPacmanSpeed(pacmanMultiplier);
     this.applyGhostSpeeds(ghostMultiplier);
 
-    console.log('[SpeedController] Speed configuration applied successfully');
+    // Start periodic verification to ensure speeds stay applied
+    this.startSpeedVerification();
+
+    console.log('[SpeedController] ✅ Speed configuration applied successfully');
+  }
+
+  startSpeedVerification() {
+    // Clear any existing verification
+    if (this.speedVerificationInterval) {
+      clearInterval(this.speedVerificationInterval);
+    }
+
+    // Verify and reapply speeds every 2 seconds
+    this.speedVerificationInterval = setInterval(() => {
+      this.verifyAndReapplySpeeds();
+    }, 2000);
+  }
+
+  verifyAndReapplySpeeds() {
+    if (!this.gameCoordinator || !this.gameCoordinator.pacman || this.originalSpeeds.pacman === null) {
+      return;
+    }
+
+    // Check if Pac-Man speed has been reset
+    const expectedPacmanSpeed = this.originalSpeeds.pacman * this.currentMultipliers.pacman;
+    const actualPacmanSpeed = this.gameCoordinator.pacman.velocityPerMs;
+    
+    if (Math.abs(actualPacmanSpeed - expectedPacmanSpeed) > 0.001) {
+      console.log(`[SpeedController] 🔄 Pac-Man speed drift detected! Expected: ${expectedPacmanSpeed}, Actual: ${actualPacmanSpeed}, Reapplying...`);
+      this.applyPacmanSpeed(this.currentMultipliers.pacman);
+    }
+
+    // Check ghost speeds
+    if (this.gameCoordinator.ghosts) {
+      this.gameCoordinator.ghosts.forEach((ghost) => {
+        const originalSpeeds = this.originalSpeeds.ghosts[ghost.name];
+        if (originalSpeeds) {
+          const expectedSpeed = originalSpeeds.defaultSpeed * this.currentMultipliers.ghost;
+          const actualSpeed = ghost.velocityPerMs;
+          
+          if (Math.abs(actualSpeed - expectedSpeed) > 0.001) {
+            console.log(`[SpeedController] 🔄 ${ghost.name} speed drift detected! Expected: ${expectedSpeed}, Actual: ${actualSpeed}, Reapplying...`);
+            // Reapply all ghost speeds
+            this.applyGhostSpeeds(this.currentMultipliers.ghost);
+          }
+        }
+      });
+    }
   }
 
   applyPacmanSpeed(multiplier) {
@@ -6751,7 +6803,13 @@ class SpeedController {
   }
 
   resetToOriginalSpeeds() {
-    console.log('[SpeedController] Resetting to original speeds');
+    console.log('[SpeedController] 🔄 Resetting to original speeds');
+
+    // Stop speed verification
+    if (this.speedVerificationInterval) {
+      clearInterval(this.speedVerificationInterval);
+      this.speedVerificationInterval = null;
+    }
 
     this.currentMultipliers.pacman = 1.0;
     this.currentMultipliers.ghost = 1.0;
@@ -6792,6 +6850,36 @@ class SpeedController {
       isInitialized: this.isInitialized,
       currentConfig: this.getCurrentConfiguration(),
     };
+  }
+
+  // Debug function you can call from browser console
+  debugCurrentSpeeds() {
+    console.log('=== SPEED CONTROLLER DEBUG ===');
+    console.log('Is Initialized:', this.isInitialized);
+    console.log('Current Multipliers:', this.currentMultipliers);
+    
+    if (this.gameCoordinator && this.gameCoordinator.pacman) {
+      console.log('Pac-Man Current Speed:', this.gameCoordinator.pacman.velocityPerMs);
+      console.log('Pac-Man Original Speed:', this.originalSpeeds.pacman);
+      console.log('Expected Pac-Man Speed:', this.originalSpeeds.pacman * this.currentMultipliers.pacman);
+    } else {
+      console.log('Pac-Man: Not available');
+    }
+
+    if (this.gameCoordinator && this.gameCoordinator.ghosts) {
+      this.gameCoordinator.ghosts.forEach(ghost => {
+        console.log(`${ghost.name}:`);
+        console.log(`  Current Speed: ${ghost.velocityPerMs}`);
+        console.log(`  Default Speed: ${ghost.defaultSpeed}`);
+        if (this.originalSpeeds.ghosts[ghost.name]) {
+          console.log(`  Original Default: ${this.originalSpeeds.ghosts[ghost.name].defaultSpeed}`);
+          console.log(`  Expected Speed: ${this.originalSpeeds.ghosts[ghost.name].defaultSpeed * this.currentMultipliers.ghost}`);
+        }
+      });
+    } else {
+      console.log('Ghosts: Not available');
+    }
+    console.log('===============================');
   }
 }
 

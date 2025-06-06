@@ -156,32 +156,70 @@ class ExperimentUI {
 
   handleEndSession() {
     try {
-      // End the current session in experiment manager
-      this.experimentManager.endSession();
-
-      // Stop the game if it's running
-      if (window.gameCoordinator && window.gameCoordinator.gameEngine) {
-        window.gameCoordinator.gameEngine.stopGame();
+      console.log('[ExperimentUI] End session button clicked');
+      
+      // Stop ALL metrics display intervals immediately
+      this.stopMetricsDisplay();
+      
+      // Clear any other possible intervals
+      if (this.metricsUpdateInterval) {
+        clearInterval(this.metricsUpdateInterval);
+        this.metricsUpdateInterval = null;
       }
 
-      // Check if experiment is complete
-      const completedSessions = this.experimentManager.getCompletedSessionsCount();
-      if (completedSessions >= 9) {
-        this.showCompleteInterface();
-        window.dispatchEvent(new window.CustomEvent('experimentComplete'));
-      } else {
-        // Return to main menu for next session
-        this.hideAllInterfaces();
-        if (window.gameCoordinator) {
-          window.gameCoordinator.mainMenu.style.opacity = 1;
-          window.gameCoordinator.mainMenu.style.visibility = 'visible';
+      // Completely remove the experiment interface from DOM
+      const experimentInterface = document.getElementById('experiment-interface');
+      if (experimentInterface) {
+        console.log('[ExperimentUI] Removing experiment interface from DOM');
+        experimentInterface.remove();
+      }
+
+      // Stop the game engine properly
+      if (window.gameCoordinator && window.gameCoordinator.gameEngine) {
+        console.log('[ExperimentUI] Stopping game engine');
+        window.gameCoordinator.gameEngine.stop();
+        
+        // Also pause the game using the pause mechanism
+        if (window.gameCoordinator.gameEngine.running) {
+          window.gameCoordinator.gameEngine.changePausedState(true);
         }
       }
 
-      window.dispatchEvent(new window.CustomEvent('experimentSessionEnded'));
-      this.stopMetricsDisplay();
+      // Pause all game entities
+      if (window.gameCoordinator) {
+        // Stop Pacman movement
+        if (window.gameCoordinator.pacman) {
+          console.log('[ExperimentUI] Stopping Pacman movement');
+          window.gameCoordinator.pacman.moving = false;
+        }
+        
+        // Pause all ghosts
+        if (window.gameCoordinator.ghosts) {
+          console.log('[ExperimentUI] Pausing ghosts');
+          window.gameCoordinator.ghosts.forEach(ghost => {
+            if (ghost && typeof ghost.pause === 'function') {
+              ghost.pause(true);
+            }
+          });
+        }
+        
+        // End session and show transition
+        console.log('[ExperimentUI] Ending experiment session and showing transition');
+        window.gameCoordinator.endExperimentSessionWithReason('user_terminated');
+        
+        // Show session transition after a brief delay to ensure everything is stopped
+        setTimeout(() => {
+          window.gameCoordinator.showSessionTransition();
+        }, 100);
+      }
+      
     } catch (error) {
       console.error('Error ending session:', error);
+      
+      // Fallback: try to at least show the session transition
+      if (window.gameCoordinator && typeof window.gameCoordinator.showSessionTransition === 'function') {
+        window.gameCoordinator.showSessionTransition();
+      }
     }
   }
 
@@ -348,20 +386,30 @@ class ExperimentUI {
   }
 
   stopMetricsDisplay() {
+    console.log('[ExperimentUI] stopMetricsDisplay called, interval ID:', this.metricsUpdateInterval);
     if (this.metricsUpdateInterval) {
       clearInterval(this.metricsUpdateInterval);
       this.metricsUpdateInterval = null;
+      console.log('[ExperimentUI] Metrics interval cleared');
+    } else {
+      console.log('[ExperimentUI] No metrics interval to clear');
     }
   }
 
   updateMetricsDisplay() {
     if (this.isTestEnvironment) return;
 
+    console.log('[ExperimentUI] updateMetricsDisplay called');
+    
     const metricsDiv = document.getElementById('metrics-display');
-    if (!metricsDiv) return;
+    if (!metricsDiv) {
+      console.log('[ExperimentUI] No metrics div found');
+      return;
+    }
 
     const metrics = this.getGameCoordinatorMetrics();
     if (!metrics) {
+      console.log('[ExperimentUI] No metrics available, showing waiting message');
       metricsDiv.innerHTML = '<em>Waiting for game data...</em>';
       return;
     }

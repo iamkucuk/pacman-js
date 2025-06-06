@@ -27,8 +27,10 @@ class ExperimentUI {
 
     // Create a minimal debug-only interface since main menu handles user input
     const baseStyle = 'position: fixed; top: 10px; left: 10px; z-index: 1000;';
-    const containerStyle = 'background: rgba(0,0,0,0.8); color: white; padding: 12px;';
-    const sizeStyle = 'border-radius: 8px; font-family: monospace; max-width: 350px; min-width: 280px;';
+    const containerStyle = 'background: rgba(0,0,0,0.8); color: white; ' +
+      'padding: 12px;';
+    const sizeStyle = 'border-radius: 8px; font-family: monospace; ' +
+      'max-width: 350px; min-width: 280px;';
     const fontStyle = 'font-size: 12px; line-height: 1.4;';
     const showStyle = this.DEBUG ? '' : 'display: none;';
     

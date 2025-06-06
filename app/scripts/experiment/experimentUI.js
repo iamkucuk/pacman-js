@@ -37,9 +37,15 @@ class ExperimentUI {
     const interfaceHTML = `
       <div id="experiment-interface" style="${baseStyle} ${containerStyle} ${sizeStyle} ${fontStyle} ${showStyle}">
         <div id="experiment-session" style="display: none;">
-          <h4 style="margin: 0 0 5px 0; color: #ffff00; font-size: 12px;">
-            Live Metrics
-          </h4>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+            <h4 style="margin: 0; color: #ffff00; font-size: 12px;">
+              Live Metrics
+            </h4>
+            <button id="minimize-metrics-btn" style="background: none; border: none; color: #ffff00; cursor: pointer; font-size: 14px; padding: 0; line-height: 1;" title="Minimize">
+              ▼
+            </button>
+          </div>
+          <div id="metrics-content" style="display: block;">
           <div id="session-info" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
           </div>
           <div id="speed-config" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
@@ -54,6 +60,7 @@ class ExperimentUI {
           <button id="export-data-btn" style="width: 100%; padding: 6px; background: #4444ff; border: none; border-radius: 4px; cursor: pointer; margin-top: 4px; font-size: 10px; color: white;">
             Export Data
           </button>
+          </div>
         </div>
         
         <div id="experiment-complete" style="display: none;">
@@ -100,6 +107,7 @@ class ExperimentUI {
     const exportBtn = document.getElementById('export-data-btn');
     const exportFinalBtn = document.getElementById('export-final-data-btn');
     const resetBtn = document.getElementById('reset-experiment-btn');
+    const minimizeBtn = document.getElementById('minimize-metrics-btn');
 
     if (endBtn) {
       endBtn.addEventListener('click', () => this.handleEndSession());
@@ -115,6 +123,10 @@ class ExperimentUI {
 
     if (resetBtn) {
       resetBtn.addEventListener('click', () => this.handleResetExperiment());
+    }
+
+    if (minimizeBtn) {
+      minimizeBtn.addEventListener('click', () => this.toggleMetricsMinimized());
     }
 
     if (this.DEBUG) {
@@ -196,6 +208,29 @@ class ExperimentUI {
         localStorage.removeItem(sessionKey);
       }
       window.location.reload();
+    }
+  }
+
+  toggleMetricsMinimized() {
+    if (this.isTestEnvironment) return;
+
+    const metricsContent = document.getElementById('metrics-content');
+    const minimizeBtn = document.getElementById('minimize-metrics-btn');
+    
+    if (!metricsContent || !minimizeBtn) return;
+
+    const isMinimized = metricsContent.style.display === 'none';
+    
+    if (isMinimized) {
+      // Expand
+      metricsContent.style.display = 'block';
+      minimizeBtn.innerHTML = '▼';
+      minimizeBtn.title = 'Minimize';
+    } else {
+      // Minimize
+      metricsContent.style.display = 'none';
+      minimizeBtn.innerHTML = '▲';
+      minimizeBtn.title = 'Maximize';
     }
   }
 
@@ -332,13 +367,16 @@ class ExperimentUI {
     }
 
     const gameTime = this.experimentManager.gameStartTime ? 
-      Math.floor((Date.now() - this.experimentManager.gameStartTime) / 1000) : 0;
+      Math.floor(this.experimentManager.getGameplayTime() / 1000) : 0;
     
     // Get detailed breakdown of eaten items
     const detailedStats = this.getDetailedEatenStats();
     
+    const sessionInfo = this.experimentManager.getCurrentSessionInfo();
+    const sessionId = sessionInfo ? sessionInfo.sessionId : '?';
+    
     metricsDiv.innerHTML = `
-      <strong>📊 Live Metrics</strong><br>
+      <strong>📊 Session ${sessionId} Metrics</strong><br>
       <strong>🍴 Eaten Items:</strong><br>
       &nbsp;&nbsp;🔸 Pacdots: ${detailedStats.pacdots}<br>
       &nbsp;&nbsp;⚡ Power Pellets: ${detailedStats.powerPellets}<br>
@@ -371,6 +409,12 @@ class ExperimentUI {
           fruits: 0,
           ghosts: 0,
         };
+      }
+
+      // Debug: Log session info to verify reset behavior
+      if (this.DEBUG && events.length === 0) {
+        // eslint-disable-next-line no-console
+        console.log('[ExperimentUI] New session detected - events reset');
       }
 
       const stats = {

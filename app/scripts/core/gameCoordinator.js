@@ -858,6 +858,11 @@ class GameCoordinator {
       this.allowPacmanMovement = true;
       this.pacman.moving = true;
 
+      // Start the gameplay timer when player can actually move
+      if (this.experimentManager && this.experimentManager.isExperimentActive) {
+        this.experimentManager.startGameplayTimer();
+      }
+
       this.ghosts.forEach((ghost) => {
         const ghostRef = ghost;
         ghostRef.moving = true;
@@ -1062,6 +1067,11 @@ class GameCoordinator {
         this.activeTimers.forEach((timer) => {
           timer.resume();
         });
+        
+        // Resume experiment timer
+        if (this.experimentManager && this.experimentManager.isExperimentActive) {
+          this.experimentManager.resumeGameplayTimer();
+        }
       } else {
         this.soundManager.stopAmbience();
         this.soundManager.setAmbience('pause_beat', true);
@@ -1071,6 +1081,11 @@ class GameCoordinator {
         this.activeTimers.forEach((timer) => {
           timer.pause();
         });
+        
+        // Pause experiment timer
+        if (this.experimentManager && this.experimentManager.isExperimentActive) {
+          this.experimentManager.pauseGameplayTimer();
+        }
       }
     }
   }
@@ -1768,6 +1783,11 @@ class GameCoordinator {
     this.allowPacmanMovement = false;
     this.pacman.display = false;
     this.pacman.moving = false;
+    
+    // Pause experiment timer during ghost eating pause
+    if (this.experimentManager && this.experimentManager.isExperimentActive) {
+      this.experimentManager.pauseGameplayTimer();
+    }
     e.detail.ghost.display = false;
     e.detail.ghost.moving = false;
 
@@ -1787,6 +1807,11 @@ class GameCoordinator {
       this.allowPacmanMovement = true;
       this.pacman.display = true;
       this.pacman.moving = true;
+      
+      // Resume experiment timer after ghost eating pause
+      if (this.experimentManager && this.experimentManager.isExperimentActive) {
+        this.experimentManager.resumeGameplayTimer();
+      }
       e.detail.ghost.display = true;
       e.detail.ghost.moving = true;
       this.ghosts.forEach((ghost) => {

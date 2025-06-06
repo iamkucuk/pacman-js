@@ -109,7 +109,10 @@ class ExperimentManager {
     };
 
     this.currentMetrics = this.currentSession;
-    this.gameStartTime = Date.now();
+    this.gameStartTime = null; // Will be set when gameplay actually starts
+    this.gameplayStarted = false;
+    this.gameplayPausedTime = 0; // Total time paused
+    this.lastPauseStart = null;
     this.isExperimentActive = true;
 
     console.log('[ExperimentManager] 🎯 About to apply speed configuration:', config);
@@ -282,10 +285,60 @@ class ExperimentManager {
     }
   }
 
+  startGameplayTimer() {
+    if (!this.isExperimentActive || this.gameplayStarted) return;
+    
+    this.gameStartTime = Date.now();
+    this.gameplayStarted = true;
+    this.gameplayPausedTime = 0;
+    this.lastPauseStart = null;
+    
+    console.log('[ExperimentManager] ⏱️ Gameplay timer started');
+  }
+
+  pauseGameplayTimer() {
+    if (!this.gameplayStarted || this.lastPauseStart) return;
+    
+    this.lastPauseStart = Date.now();
+    console.log('[ExperimentManager] ⏸️ Gameplay timer paused');
+  }
+
+  resumeGameplayTimer() {
+    if (!this.gameplayStarted || !this.lastPauseStart) return;
+    
+    const pauseDuration = Date.now() - this.lastPauseStart;
+    this.gameplayPausedTime += pauseDuration;
+    this.lastPauseStart = null;
+    
+    console.log('[ExperimentManager] ▶️ Gameplay timer resumed (paused for ' + pauseDuration + 'ms)');
+  }
+
+  getGameplayTime() {
+    if (!this.gameStartTime) return 0;
+    
+    let currentTime = Date.now();
+    let totalTime = currentTime - this.gameStartTime;
+    
+    // Subtract total paused time
+    totalTime -= this.gameplayPausedTime;
+    
+    // If currently paused, subtract current pause duration
+    if (this.lastPauseStart) {
+      totalTime -= (currentTime - this.lastPauseStart);
+    }
+    
+    return Math.max(0, totalTime);
+  }
+
   endSession() {
     if (!this.isExperimentActive || !this.currentMetrics) return;
 
-    this.currentMetrics.summary.gameTime = Date.now() - this.gameStartTime;
+    // Ensure timer is properly stopped and calculate final time
+    if (this.lastPauseStart) {
+      this.resumeGameplayTimer(); // Close any open pause
+    }
+    
+    this.currentMetrics.summary.gameTime = this.getGameplayTime();
     this.metrics.push(this.currentMetrics);
     
     this.saveUserData();
@@ -294,6 +347,9 @@ class ExperimentManager {
     this.isExperimentActive = false;
     this.currentMetrics = null;
     this.gameStartTime = null;
+    this.gameplayStarted = false;
+    this.gameplayPausedTime = 0;
+    this.lastPauseStart = null;
   }
 
   getCompletedSessionsCount() {

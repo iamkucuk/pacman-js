@@ -1968,6 +1968,11 @@ class GameCoordinator {
       this.allowPacmanMovement = true;
       this.pacman.moving = true;
 
+      // Start the gameplay timer when player can actually move
+      if (this.experimentManager && this.experimentManager.isExperimentActive) {
+        this.experimentManager.startGameplayTimer();
+      }
+
       this.ghosts.forEach((ghost) => {
         const ghostRef = ghost;
         ghostRef.moving = true;
@@ -2172,6 +2177,11 @@ class GameCoordinator {
         this.activeTimers.forEach((timer) => {
           timer.resume();
         });
+        
+        // Resume experiment timer
+        if (this.experimentManager && this.experimentManager.isExperimentActive) {
+          this.experimentManager.resumeGameplayTimer();
+        }
       } else {
         this.soundManager.stopAmbience();
         this.soundManager.setAmbience('pause_beat', true);
@@ -2181,6 +2191,11 @@ class GameCoordinator {
         this.activeTimers.forEach((timer) => {
           timer.pause();
         });
+        
+        // Pause experiment timer
+        if (this.experimentManager && this.experimentManager.isExperimentActive) {
+          this.experimentManager.pauseGameplayTimer();
+        }
       }
     }
   }
@@ -2878,6 +2893,11 @@ class GameCoordinator {
     this.allowPacmanMovement = false;
     this.pacman.display = false;
     this.pacman.moving = false;
+    
+    // Pause experiment timer during ghost eating pause
+    if (this.experimentManager && this.experimentManager.isExperimentActive) {
+      this.experimentManager.pauseGameplayTimer();
+    }
     e.detail.ghost.display = false;
     e.detail.ghost.moving = false;
 
@@ -2897,6 +2917,11 @@ class GameCoordinator {
       this.allowPacmanMovement = true;
       this.pacman.display = true;
       this.pacman.moving = true;
+      
+      // Resume experiment timer after ghost eating pause
+      if (this.experimentManager && this.experimentManager.isExperimentActive) {
+        this.experimentManager.resumeGameplayTimer();
+      }
       e.detail.ghost.display = true;
       e.detail.ghost.moving = true;
       this.ghosts.forEach((ghost) => {
@@ -3806,7 +3831,10 @@ class ExperimentManager {
     };
 
     this.currentMetrics = this.currentSession;
-    this.gameStartTime = Date.now();
+    this.gameStartTime = null; // Will be set when gameplay actually starts
+    this.gameplayStarted = false;
+    this.gameplayPausedTime = 0; // Total time paused
+    this.lastPauseStart = null;
     this.isExperimentActive = true;
 
     console.log('[ExperimentManager] 🎯 About to apply speed configuration:', config);
@@ -3979,10 +4007,60 @@ class ExperimentManager {
     }
   }
 
+  startGameplayTimer() {
+    if (!this.isExperimentActive || this.gameplayStarted) return;
+    
+    this.gameStartTime = Date.now();
+    this.gameplayStarted = true;
+    this.gameplayPausedTime = 0;
+    this.lastPauseStart = null;
+    
+    console.log('[ExperimentManager] ⏱️ Gameplay timer started');
+  }
+
+  pauseGameplayTimer() {
+    if (!this.gameplayStarted || this.lastPauseStart) return;
+    
+    this.lastPauseStart = Date.now();
+    console.log('[ExperimentManager] ⏸️ Gameplay timer paused');
+  }
+
+  resumeGameplayTimer() {
+    if (!this.gameplayStarted || !this.lastPauseStart) return;
+    
+    const pauseDuration = Date.now() - this.lastPauseStart;
+    this.gameplayPausedTime += pauseDuration;
+    this.lastPauseStart = null;
+    
+    console.log('[ExperimentManager] ▶️ Gameplay timer resumed (paused for ' + pauseDuration + 'ms)');
+  }
+
+  getGameplayTime() {
+    if (!this.gameStartTime) return 0;
+    
+    let currentTime = Date.now();
+    let totalTime = currentTime - this.gameStartTime;
+    
+    // Subtract total paused time
+    totalTime -= this.gameplayPausedTime;
+    
+    // If currently paused, subtract current pause duration
+    if (this.lastPauseStart) {
+      totalTime -= (currentTime - this.lastPauseStart);
+    }
+    
+    return Math.max(0, totalTime);
+  }
+
   endSession() {
     if (!this.isExperimentActive || !this.currentMetrics) return;
 
-    this.currentMetrics.summary.gameTime = Date.now() - this.gameStartTime;
+    // Ensure timer is properly stopped and calculate final time
+    if (this.lastPauseStart) {
+      this.resumeGameplayTimer(); // Close any open pause
+    }
+    
+    this.currentMetrics.summary.gameTime = this.getGameplayTime();
     this.metrics.push(this.currentMetrics);
     
     this.saveUserData();
@@ -3991,6 +4069,9 @@ class ExperimentManager {
     this.isExperimentActive = false;
     this.currentMetrics = null;
     this.gameStartTime = null;
+    this.gameplayStarted = false;
+    this.gameplayPausedTime = 0;
+    this.lastPauseStart = null;
   }
 
   getCompletedSessionsCount() {
@@ -4219,9 +4300,15 @@ class ExperimentUI {
     const interfaceHTML = `
       <div id="experiment-interface" style="${baseStyle} ${containerStyle} ${sizeStyle} ${fontStyle} ${showStyle}">
         <div id="experiment-session" style="display: none;">
-          <h4 style="margin: 0 0 5px 0; color: #ffff00; font-size: 12px;">
-            Live Metrics
-          </h4>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+            <h4 style="margin: 0; color: #ffff00; font-size: 12px;">
+              Live Metrics
+            </h4>
+            <button id="minimize-metrics-btn" style="background: none; border: none; color: #ffff00; cursor: pointer; font-size: 14px; padding: 0; line-height: 1;" title="Minimize">
+              ▼
+            </button>
+          </div>
+          <div id="metrics-content" style="display: block;">
           <div id="session-info" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
           </div>
           <div id="speed-config" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
@@ -4236,6 +4323,7 @@ class ExperimentUI {
           <button id="export-data-btn" style="width: 100%; padding: 6px; background: #4444ff; border: none; border-radius: 4px; cursor: pointer; margin-top: 4px; font-size: 10px; color: white;">
             Export Data
           </button>
+          </div>
         </div>
         
         <div id="experiment-complete" style="display: none;">
@@ -4282,6 +4370,7 @@ class ExperimentUI {
     const exportBtn = document.getElementById('export-data-btn');
     const exportFinalBtn = document.getElementById('export-final-data-btn');
     const resetBtn = document.getElementById('reset-experiment-btn');
+    const minimizeBtn = document.getElementById('minimize-metrics-btn');
 
     if (endBtn) {
       endBtn.addEventListener('click', () => this.handleEndSession());
@@ -4297,6 +4386,10 @@ class ExperimentUI {
 
     if (resetBtn) {
       resetBtn.addEventListener('click', () => this.handleResetExperiment());
+    }
+
+    if (minimizeBtn) {
+      minimizeBtn.addEventListener('click', () => this.toggleMetricsMinimized());
     }
 
     if (this.DEBUG) {
@@ -4378,6 +4471,29 @@ class ExperimentUI {
         localStorage.removeItem(sessionKey);
       }
       window.location.reload();
+    }
+  }
+
+  toggleMetricsMinimized() {
+    if (this.isTestEnvironment) return;
+
+    const metricsContent = document.getElementById('metrics-content');
+    const minimizeBtn = document.getElementById('minimize-metrics-btn');
+    
+    if (!metricsContent || !minimizeBtn) return;
+
+    const isMinimized = metricsContent.style.display === 'none';
+    
+    if (isMinimized) {
+      // Expand
+      metricsContent.style.display = 'block';
+      minimizeBtn.innerHTML = '▼';
+      minimizeBtn.title = 'Minimize';
+    } else {
+      // Minimize
+      metricsContent.style.display = 'none';
+      minimizeBtn.innerHTML = '▲';
+      minimizeBtn.title = 'Maximize';
     }
   }
 
@@ -4514,13 +4630,16 @@ class ExperimentUI {
     }
 
     const gameTime = this.experimentManager.gameStartTime ? 
-      Math.floor((Date.now() - this.experimentManager.gameStartTime) / 1000) : 0;
+      Math.floor(this.experimentManager.getGameplayTime() / 1000) : 0;
     
     // Get detailed breakdown of eaten items
     const detailedStats = this.getDetailedEatenStats();
     
+    const sessionInfo = this.experimentManager.getCurrentSessionInfo();
+    const sessionId = sessionInfo ? sessionInfo.sessionId : '?';
+    
     metricsDiv.innerHTML = `
-      <strong>📊 Live Metrics</strong><br>
+      <strong>📊 Session ${sessionId} Metrics</strong><br>
       <strong>🍴 Eaten Items:</strong><br>
       &nbsp;&nbsp;🔸 Pacdots: ${detailedStats.pacdots}<br>
       &nbsp;&nbsp;⚡ Power Pellets: ${detailedStats.powerPellets}<br>
@@ -4553,6 +4672,12 @@ class ExperimentUI {
           fruits: 0,
           ghosts: 0,
         };
+      }
+
+      // Debug: Log session info to verify reset behavior
+      if (this.DEBUG && events.length === 0) {
+        // eslint-disable-next-line no-console
+        console.log('[ExperimentUI] New session detected - events reset');
       }
 
       const stats = {

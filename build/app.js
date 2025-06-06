@@ -1230,6 +1230,8 @@ class GameCoordinator {
     this.sessionManager = new SessionManager(this.experimentManager);
     this.progressController = new ProgressController(this.experimentManager, this.sessionManager);
     this.dataManager = new DataManager(this.experimentManager, this.sessionManager);
+    this.exportManager = new ExportManager(this.experimentManager, this.sessionManager, this.dataManager);
+    this.visualizationDashboard = new VisualizationDashboard(this.experimentManager, this.sessionManager, this.exportManager);
     this.experimentUI = new ExperimentUI(this.experimentManager);
     this.speedController = new SpeedController();
     this.metricsCollector = new MetricsCollector(this.experimentManager);
@@ -1238,10 +1240,14 @@ class GameCoordinator {
     this.experimentManager.sessionManager = this.sessionManager;
     this.experimentManager.progressController = this.progressController;
     this.experimentManager.dataManager = this.dataManager;
+    this.experimentManager.exportManager = this.exportManager;
+    this.experimentManager.visualizationDashboard = this.visualizationDashboard;
     
     this.sessionManager.initialize();
     this.progressController.initialize();
     this.dataManager.initialize();
+    this.exportManager.initialize();
+    this.visualizationDashboard.initialize();
     this.experimentUI.initialize();
     this.bindExperimentEvents();
   }
@@ -1297,6 +1303,20 @@ class GameCoordinator {
    * Reveals the game underneath the loading covers and starts gameplay
    */
   startButtonClick() {
+    // Check if experiment is properly initialized
+    if (!this.experimentManager.userId) {
+      console.warn('[GameCoordinator] Cannot start game - no user ID set');
+      alert('Please enter a User ID and start an experiment session first.');
+      return;
+    }
+
+    // Check if experiment session is active
+    if (!this.experimentManager.isExperimentActive) {
+      console.warn('[GameCoordinator] Cannot start game - no active experiment session');
+      alert('Please start an experiment session first.');
+      return;
+    }
+
     this.leftCover.style.left = '-50%';
     this.rightCover.style.right = '-50%';
     this.mainMenu.style.opacity = 0;
@@ -1312,6 +1332,15 @@ class GameCoordinator {
       this.init();
     }
     this.startGameplay(true);
+    
+    // Dispatch game started event for experiment tracking
+    window.dispatchEvent(new CustomEvent('gameStarted', {
+      detail: {
+        sessionId: this.experimentManager.currentSession?.sessionId,
+        speedConfig: this.experimentManager.currentSession?.speedConfig,
+        timestamp: Date.now()
+      }
+    }));
   }
 
   /**
@@ -2075,6 +2104,9 @@ class GameCoordinator {
   gameOver() {
     localStorage.setItem('highScore', this.highScore);
 
+    // End current experiment session
+    this.endExperimentSession();
+
     new Timer(() => {
       this.displayText(
         {
@@ -2093,12 +2125,273 @@ class GameCoordinator {
         this.rightCover.style.right = '0';
 
         setTimeout(() => {
-          this.mainMenu.style.opacity = 1;
-          this.gameStartButton.disabled = false;
-          this.mainMenu.style.visibility = 'visible';
+          this.showSessionTransition();
         }, 1000);
       }, 2500);
     }, 2250);
+  }
+
+  /**
+   * Ends the current experiment session and handles session completion
+   */
+  endExperimentSession() {
+    this.endExperimentSessionWithReason('game_over');
+  }
+
+  /**
+   * Shows session transition UI - either next session prompt or experiment completion
+   */
+  showSessionTransition() {
+    const completedSessions = this.experimentManager.getCompletedSessionsCount();
+    const remainingSessions = this.experimentManager.getRemainingSessionsCount();
+
+    if (remainingSessions > 0) {
+      // Show next session prompt
+      this.showNextSessionPrompt(completedSessions, remainingSessions);
+    } else {
+      // All sessions completed - show experiment completion
+      this.showExperimentCompletion();
+    }
+  }
+
+  /**
+   * Shows prompt for starting next session
+   */
+  showNextSessionPrompt(completed, remaining) {
+    const nextSessionId = completed + 1;
+    const nextPermutation = this.experimentManager.sessionOrder[completed];
+    const nextConfig = this.experimentManager.PERMUTATIONS[nextPermutation];
+
+    // Create session transition overlay
+    const transitionOverlay = document.createElement('div');
+    transitionOverlay.id = 'session-transition';
+    transitionOverlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 3000;
+      font-family: monospace;
+      color: white;
+    `;
+
+    transitionOverlay.innerHTML = `
+      <div style="text-align: center; padding: 40px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; border: 2px solid #4CAF50;">
+        <h2 style="color: #4CAF50; margin-bottom: 20px;">Session ${completed} Complete!</h2>
+        <p style="margin: 15px 0;">Sessions completed: ${completed}/9</p>
+        <p style="margin: 15px 0;">Sessions remaining: ${remaining}</p>
+        <hr style="margin: 30px 0; border-color: #333;">
+        <h3 style="color: #FFC107; margin-bottom: 15px;">Next Session Configuration:</h3>
+        <p style="margin: 10px 0;">Session ${nextSessionId}</p>
+        <p style="margin: 10px 0;">Pac-Man Speed: <strong>${nextConfig.pacman.toUpperCase()}</strong></p>
+        <p style="margin: 10px 0;">Ghost Speed: <strong>${nextConfig.ghost.toUpperCase()}</strong></p>
+        <div style="margin-top: 30px;">
+          <button id="start-next-session" style="
+            padding: 15px 30px;
+            margin: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: monospace;
+          ">Start Session ${nextSessionId}</button>
+          <button id="pause-experiment" style="
+            padding: 15px 30px;
+            margin: 10px;
+            background: #FF9800;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: monospace;
+          ">Pause Experiment</button>
+        </div>
+        <p style="margin-top: 20px; font-size: 12px; color: #666;">
+          Press Ctrl+D to view analytics dashboard
+        </p>
+      </div>
+    `;
+
+    document.body.appendChild(transitionOverlay);
+
+    // Bind button events
+    document.getElementById('start-next-session').addEventListener('click', () => {
+      this.startNextExperimentSession();
+      document.body.removeChild(transitionOverlay);
+    });
+
+    document.getElementById('pause-experiment').addEventListener('click', () => {
+      document.body.removeChild(transitionOverlay);
+      this.returnToMainMenu();
+    });
+  }
+
+  /**
+   * Shows experiment completion screen
+   */
+  showExperimentCompletion() {
+    // Dispatch experiment complete event
+    window.dispatchEvent(new CustomEvent('experimentComplete', {
+      detail: {
+        userId: this.experimentManager.userId,
+        completedSessions: 9,
+        totalSessions: 9,
+        timestamp: Date.now()
+      }
+    }));
+
+    const completionOverlay = document.createElement('div');
+    completionOverlay.id = 'experiment-completion';
+    completionOverlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 3000;
+      font-family: monospace;
+      color: white;
+    `;
+
+    completionOverlay.innerHTML = `
+      <div style="text-align: center; padding: 40px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; border: 2px solid #4CAF50;">
+        <h2 style="color: #4CAF50; margin-bottom: 20px;">🎉 Experiment Complete! 🎉</h2>
+        <p style="margin: 15px 0; font-size: 18px;">All 9 sessions completed successfully!</p>
+        <p style="margin: 15px 0;">User ID: <strong>${this.experimentManager.userId}</strong></p>
+        <hr style="margin: 30px 0; border-color: #333;">
+        <h3 style="color: #FFC107; margin-bottom: 15px;">Thank you for participating!</h3>
+        <p style="margin: 10px 0;">Your data has been saved and is ready for export.</p>
+        <div style="margin-top: 30px;">
+          <button id="view-results" style="
+            padding: 15px 30px;
+            margin: 10px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: monospace;
+          ">View Results Dashboard</button>
+          <button id="export-data" style="
+            padding: 15px 30px;
+            margin: 10px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: monospace;
+          ">Export Data</button>
+          <button id="new-experiment" style="
+            padding: 15px 30px;
+            margin: 10px;
+            background: #FF9800;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            font-family: monospace;
+          ">Start New Experiment</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(completionOverlay);
+
+    // Bind button events
+    document.getElementById('view-results').addEventListener('click', () => {
+      this.visualizationDashboard.generateCompleteDashboard();
+      document.body.removeChild(completionOverlay);
+      this.returnToMainMenu();
+    });
+
+    document.getElementById('export-data').addEventListener('click', () => {
+      this.exportManager.exportData('json');
+      document.body.removeChild(completionOverlay);
+      this.returnToMainMenu();
+    });
+
+    document.getElementById('new-experiment').addEventListener('click', () => {
+      document.body.removeChild(completionOverlay);
+      this.resetForNewExperiment();
+    });
+  }
+
+  /**
+   * Starts the next experiment session
+   */
+  startNextExperimentSession() {
+    try {
+      const session = this.experimentManager.startSession();
+      
+      // Dispatch session started event
+      window.dispatchEvent(new CustomEvent('experimentSessionStarted', {
+        detail: {
+          sessionId: session.sessionId,
+          speedConfig: session.speedConfig,
+          completedSessions: this.experimentManager.getCompletedSessionsCount() - 1
+        }
+      }));
+
+      // Reset game state for new session
+      this.reset();
+      this.mainMenu.style.opacity = 1;
+      this.gameStartButton.disabled = false;
+      this.mainMenu.style.visibility = 'visible';
+      
+    } catch (error) {
+      console.error('[GameCoordinator] Failed to start next session:', error);
+      alert('Error starting next session: ' + error.message);
+      this.returnToMainMenu();
+    }
+  }
+
+  /**
+   * Returns to main menu
+   */
+  returnToMainMenu() {
+    this.mainMenu.style.opacity = 1;
+    this.gameStartButton.disabled = false;
+    this.mainMenu.style.visibility = 'visible';
+  }
+
+  /**
+   * Resets everything for a new experiment with different user
+   */
+  resetForNewExperiment() {
+    // Reset experiment manager
+    this.experimentManager.userId = null;
+    this.experimentManager.sessionOrder = [];
+    this.experimentManager.metrics = [];
+    this.experimentManager.currentSession = null;
+    this.experimentManager.currentMetrics = null;
+    this.experimentManager.isExperimentActive = false;
+
+    // Clear all storage for current experiment
+    localStorage.clear();
+
+    // Return to main menu
+    this.returnToMainMenu();
+
+    // Show experiment UI for new user setup
+    if (this.experimentUI) {
+      this.experimentUI.showUserIdPrompt();
+    }
   }
 
   /**
@@ -2164,7 +2457,7 @@ class GameCoordinator {
   }
 
   /**
-   * Resets the gameboard and prepares the next level
+   * Handles level completion - for research purposes, ends session instead of advancing level
    */
   advanceLevel() {
     this.allowPause = false;
@@ -2203,29 +2496,22 @@ class GameCoordinator {
               new Timer(() => {
                 this.mazeImg.src = `${imgBase}maze_blue.svg`;
                 new Timer(() => {
-                  this.mazeCover.style.visibility = 'visible';
+                  // Display level complete message
+                  this.displayText(
+                    {
+                      left: this.scaledTileSize * 8,
+                      top: this.scaledTileSize * 16.5,
+                    },
+                    'ready',  // Reusing "ready" text as "level complete"
+                    3000,
+                    this.scaledTileSize * 12,
+                    this.scaledTileSize * 2,
+                  );
+                  
                   new Timer(() => {
-                    this.mazeCover.style.visibility = 'hidden';
-                    this.level += 1;
-                    this.allowKeyPresses = true;
-                    this.entityList.forEach((entity) => {
-                      const entityRef = entity;
-                      if (entityRef.level) {
-                        entityRef.level = this.level;
-                      }
-                      entityRef.reset();
-                      if (entityRef instanceof Ghost) {
-                        entityRef.resetDefaultSpeed();
-                      }
-                      if (
-                        entityRef instanceof Pickup
-                        && entityRef.type !== 'fruit'
-                      ) {
-                        this.remainingDots += 1;
-                      }
-                    });
-                    this.startGameplay();
-                  }, 500);
+                    // For research purposes, end session when level is completed
+                    this.levelCompleteEndSession();
+                  }, 3000);
                 }, 250);
               }, 250);
             }, 250);
@@ -2233,6 +2519,53 @@ class GameCoordinator {
         }, 250);
       }, 250);
     }, 2000);
+  }
+
+  /**
+   * Ends session when level is completed (all dots collected)
+   */
+  levelCompleteEndSession() {
+    localStorage.setItem('highScore', this.highScore);
+
+    // End current experiment session with level complete reason
+    this.endExperimentSessionWithReason('level_complete');
+
+    this.leftCover.style.left = '0';
+    this.rightCover.style.right = '0';
+
+    setTimeout(() => {
+      this.showSessionTransition();
+    }, 1000);
+  }
+
+  /**
+   * Ends the current experiment session with a specific reason
+   */
+  endExperimentSessionWithReason(reason) {
+    if (this.experimentManager.isExperimentActive) {
+      // Dispatch game ended event with reason
+      window.dispatchEvent(new CustomEvent('gameEnded', {
+        detail: {
+          sessionId: this.experimentManager.currentSession?.sessionId,
+          finalScore: this.points,
+          gameTime: Date.now() - this.gameStartTime,
+          reason: reason, // 'level_complete' or 'game_over'
+          timestamp: Date.now()
+        }
+      }));
+
+      // End the session in experiment manager
+      this.experimentManager.endSession();
+      
+      // Dispatch session ended event for other components
+      window.dispatchEvent(new CustomEvent('experimentSessionEnded', {
+        detail: {
+          sessionId: this.experimentManager.currentSession?.sessionId || 'unknown',
+          completedSessions: this.experimentManager.getCompletedSessionsCount(),
+          reason: reason
+        }
+      }));
+    }
   }
 
   /**
@@ -3149,14 +3482,14 @@ class ExperimentManager {
   constructor() {
     this.SPEED_CONFIGS = {
       pacman: {
-        slow: 0.5,
-        normal: 1.0,
-        fast: 1.5
+        slow: 0.3,    // Very slow - 30% of normal speed
+        normal: 1.0,  // Normal baseline
+        fast: 2.5     // Very fast - 250% of normal speed
       },
       ghost: {
-        slow: 0.5,
-        normal: 1.0,
-        fast: 1.5
+        slow: 0.2,    // Very slow - 20% of normal speed  
+        normal: 1.0,  // Normal baseline
+        fast: 3.0     // Very fast - 300% of normal speed
       }
     };
 
@@ -3614,17 +3947,21 @@ class ExperimentUI {
     this.isInitialized = false;
     this.metricsUpdateInterval = null;
     this.DEBUG = true;
+    this.isTestEnvironment = typeof document === 'undefined';
   }
 
   initialize() {
     if (this.isInitialized) return;
-    
+
     this.createExperimentInterface();
     this.bindEvents();
     this.isInitialized = true;
   }
 
   createExperimentInterface() {
+    // Skip DOM operations in test environment
+    if (typeof document === 'undefined') return;
+
     const existingInterface = document.getElementById('experiment-interface');
     if (existingInterface) {
       existingInterface.remove();
@@ -3667,6 +4004,24 @@ class ExperimentUI {
     document.body.insertAdjacentHTML('beforeend', interfaceHTML);
   }
 
+  showUserIdPrompt() {
+    // Show login section, hide others
+    this.showSection('experiment-login');
+
+    // Clear and focus input field
+    const userIdInput = document.getElementById('user-id-input');
+    if (userIdInput) {
+      userIdInput.value = '';
+      userIdInput.focus();
+    }
+
+    // Clear any error messages
+    const errorDiv = document.getElementById('login-error');
+    if (errorDiv) {
+      errorDiv.style.display = 'none';
+    }
+  }
+
   createDebugPanel() {
     return `
       <div id="debug-panel" style="margin-top: 15px; border-top: 1px solid #333; padding-top: 10px;">
@@ -3678,6 +4033,8 @@ class ExperimentUI {
   }
 
   bindEvents() {
+    if (this.isTestEnvironment) return;
+
     const startBtn = document.getElementById('start-experiment-btn');
     const endBtn = document.getElementById('end-session-btn');
     const exportBtn = document.getElementById('export-data-btn');
@@ -3724,7 +4081,7 @@ class ExperimentUI {
   handleStartExperiment() {
     const userIdInput = document.getElementById('user-id-input');
     const errorDiv = document.getElementById('login-error');
-    
+
     try {
       const userId = userIdInput.value.trim();
       if (!userId) {
@@ -3732,7 +4089,7 @@ class ExperimentUI {
       }
 
       this.experimentManager.initializeUser(userId);
-      
+
       const completedSessions = this.experimentManager.getCompletedSessionsCount();
       if (completedSessions >= 9) {
         this.showCompleteInterface();
@@ -3742,17 +4099,16 @@ class ExperimentUI {
       this.experimentManager.startSession();
       this.showSessionInterface();
       this.updateSessionDisplay();
-      
+
       if (errorDiv) {
         errorDiv.style.display = 'none';
       }
 
-      window.dispatchEvent(new CustomEvent('experimentSessionStarted', {
-        detail: this.experimentManager.getCurrentSessionInfo()
+      window.dispatchEvent(new window.CustomEvent('experimentSessionStarted', {
+        detail: this.experimentManager.getCurrentSessionInfo(),
       }));
 
       this.startMetricsDisplay();
-
     } catch (error) {
       if (errorDiv) {
         errorDiv.textContent = error.message;
@@ -3764,7 +4120,7 @@ class ExperimentUI {
   handleEndSession() {
     try {
       this.experimentManager.endSession();
-      
+
       const completedSessions = this.experimentManager.getCompletedSessionsCount();
       if (completedSessions >= 9) {
         this.showCompleteInterface();
@@ -3772,10 +4128,9 @@ class ExperimentUI {
         this.showLoginInterface();
       }
 
-      window.dispatchEvent(new CustomEvent('experimentSessionEnded'));
-      
-      this.stopMetricsDisplay();
+      window.dispatchEvent(new window.CustomEvent('experimentSessionEnded'));
 
+      this.stopMetricsDisplay();
     } catch (error) {
       console.error('Error ending session:', error);
     }
@@ -3785,26 +4140,31 @@ class ExperimentUI {
     try {
       const jsonData = this.experimentManager.exportData('json');
       const csvData = this.experimentManager.exportData('csv');
-      
+
       this.downloadFile(`experiment_${this.experimentManager.userId}_data.json`, jsonData);
       this.downloadFile(`experiment_${this.experimentManager.userId}_data.csv`, csvData);
-      
     } catch (error) {
       console.error('Error exporting data:', error);
     }
   }
 
   handleResetExperiment() {
-    if (confirm('Are you sure you want to reset the experiment? All data will be lost.')) {
+    if (window.confirm('Are you sure you want to reset the experiment? All data will be lost.')) {
       if (this.experimentManager.userId) {
         localStorage.removeItem(`experiment_${this.experimentManager.userId}`);
         localStorage.removeItem(`current_session_${this.experimentManager.userId}`);
       }
-      location.reload();
+      window.location.reload();
     }
   }
 
   downloadFile(filename, content) {
+    if (this.isTestEnvironment) {
+      // In test environment, just log the action
+      console.log(`[TEST] Would download file: ${filename}`);
+      return;
+    }
+
     const blob = new Blob([content], { type: 'text/plain' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -3817,6 +4177,8 @@ class ExperimentUI {
   }
 
   showLoginInterface() {
+    if (this.isTestEnvironment) return;
+
     this.hideAllInterfaces();
     const loginDiv = document.getElementById('experiment-login');
     if (loginDiv) {
@@ -3825,6 +4187,8 @@ class ExperimentUI {
   }
 
   showSessionInterface() {
+    if (this.isTestEnvironment) return;
+
     this.hideAllInterfaces();
     const sessionDiv = document.getElementById('experiment-session');
     if (sessionDiv) {
@@ -3833,6 +4197,8 @@ class ExperimentUI {
   }
 
   showCompleteInterface() {
+    if (this.isTestEnvironment) return;
+
     this.hideAllInterfaces();
     const completeDiv = document.getElementById('experiment-complete');
     if (completeDiv) {
@@ -3841,8 +4207,10 @@ class ExperimentUI {
   }
 
   hideAllInterfaces() {
+    if (this.isTestEnvironment) return;
+
     const interfaces = ['experiment-login', 'experiment-session', 'experiment-complete'];
-    interfaces.forEach(id => {
+    interfaces.forEach((id) => {
       const element = document.getElementById(id);
       if (element) {
         element.style.display = 'none';
@@ -3851,6 +4219,8 @@ class ExperimentUI {
   }
 
   updateSessionDisplay() {
+    if (this.isTestEnvironment) return;
+
     const sessionInfo = this.experimentManager.getCurrentSessionInfo();
     if (!sessionInfo) return;
 
@@ -3885,6 +4255,8 @@ class ExperimentUI {
   }
 
   startMetricsDisplay() {
+    if (this.isTestEnvironment) return;
+
     if (this.metricsUpdateInterval) {
       clearInterval(this.metricsUpdateInterval);
     }
@@ -3902,6 +4274,8 @@ class ExperimentUI {
   }
 
   updateMetricsDisplay() {
+    if (this.isTestEnvironment) return;
+
     const metricsDiv = document.getElementById('metrics-display');
     if (!metricsDiv) return;
 
@@ -3924,14 +4298,14 @@ class ExperimentUI {
 
   getGameCoordinatorMetrics() {
     try {
-      if (window.gameCoordinator && window.gameCoordinator.metricsCollector) {
+      if (!this.isTestEnvironment && window.gameCoordinator && window.gameCoordinator.metricsCollector) {
         return window.gameCoordinator.metricsCollector.getCurrentMetrics();
       }
-      
+
       if (this.metricsCollector) {
         return this.metricsCollector.getCurrentMetrics();
       }
-      
+
       return null;
     } catch (error) {
       if (this.DEBUG) {
@@ -3946,6 +4320,8 @@ class ExperimentUI {
   }
 
   updateDebugDisplay() {
+    if (this.isTestEnvironment) return;
+
     const debugInfoDiv = document.getElementById('debug-info');
     if (!debugInfoDiv) return;
 
@@ -3959,6 +4335,8 @@ class ExperimentUI {
   }
 
   toggleDebugDetails() {
+    if (this.isTestEnvironment) return;
+
     const debugInfoDiv = document.getElementById('debug-info');
     if (!debugInfoDiv) return;
 
@@ -3981,18 +4359,1000 @@ class ExperimentUI {
 
   logMetric(type, data = {}) {
     this.experimentManager.logEvent(type, data);
-    
+
     if (this.DEBUG) {
       console.log('[METRICS]', type, data);
     }
   }
 
   destroy() {
-    const experimentInterface = document.getElementById('experiment-interface');
-    if (experimentInterface) {
-      experimentInterface.remove();
+    if (!this.isTestEnvironment) {
+      const experimentInterface = document.getElementById('experiment-interface');
+      if (experimentInterface) {
+        experimentInterface.remove();
+      }
     }
     this.isInitialized = false;
+  }
+}
+
+
+class ExportManager {
+  constructor(experimentManager, sessionManager, dataManager) {
+    this.experimentManager = experimentManager;
+    this.sessionManager = sessionManager;
+    this.dataManager = dataManager;
+    this.exportFormats = ['json', 'csv', 'xlsx', 'spss', 'r', 'python'];
+    this.anonymization = {
+      enabled: false,
+      hashSalt: null,
+      fieldMasking: {}
+    };
+    this.isInitialized = false;
+    this.DEBUG = true;
+  }
+
+  initialize() {
+    if (this.isInitialized) return;
+    
+    this.setupAnonymization();
+    this.bindEvents();
+    this.isInitialized = true;
+    
+    if (this.DEBUG) {
+      console.log('[ExportManager] Initialized with formats:', this.exportFormats);
+    }
+  }
+
+  bindEvents() {
+    window.addEventListener('experimentComplete', () => {
+      this.generateCompletionReport();
+    });
+
+    window.addEventListener('exportRequested', (e) => {
+      this.handleExportRequest(e.detail);
+    });
+  }
+
+  setupAnonymization() {
+    this.anonymization.hashSalt = this.generateSalt();
+    this.anonymization.fieldMasking = {
+      userId: { enabled: false, method: 'hash' },
+      deviceInfo: { enabled: false, method: 'remove' },
+      browserInfo: { enabled: false, method: 'generalize' },
+      timestamps: { enabled: false, method: 'relative' }
+    };
+  }
+
+  generateSalt() {
+    return Math.random().toString(36).substring(2, 15) + 
+           Math.random().toString(36).substring(2, 15);
+  }
+
+  exportData(format = 'json', options = {}) {
+    try {
+      const exportOptions = {
+        includeRawEvents: true,
+        includeSummary: true,
+        includeAnalytics: true,
+        includeDeviceInfo: true,
+        anonymize: false,
+        compression: false,
+        ...options
+      };
+
+      const rawData = this.gatherExportData(exportOptions);
+      const processedData = this.processDataForExport(rawData, exportOptions);
+      
+      let exportContent;
+      let filename;
+      let mimeType;
+
+      switch (format.toLowerCase()) {
+        case 'json':
+          { const result = this.exportAsJSON(processedData, exportOptions);
+          exportContent = result.content;
+          filename = result.filename;
+          mimeType = result.mimeType; }
+          break;
+        case 'csv':
+          { const result = this.exportAsCSV(processedData, exportOptions);
+          exportContent = result.content;
+          filename = result.filename;
+          mimeType = result.mimeType; }
+          break;
+        case 'xlsx':
+          { const result = this.exportAsExcel(processedData, exportOptions);
+          exportContent = result.content;
+          filename = result.filename;
+          mimeType = result.mimeType; }
+          break;
+        case 'spss':
+          { const result = this.exportAsSPSS(processedData, exportOptions);
+          exportContent = result.content;
+          filename = result.filename;
+          mimeType = result.mimeType; }
+          break;
+        case 'r':
+          { const result = this.exportAsR(processedData, exportOptions);
+          exportContent = result.content;
+          filename = result.filename;
+          mimeType = result.mimeType; }
+          break;
+        case 'python':
+          { const result = this.exportAsPython(processedData, exportOptions);
+          exportContent = result.content;
+          filename = result.filename;
+          mimeType = result.mimeType; }
+          break;
+        default:
+          throw new Error(`Unsupported export format: ${format}`);
+      }
+
+      this.downloadFile(filename, exportContent, mimeType);
+      this.logExport(format, exportOptions, exportContent.length);
+      
+      return {
+        success: true,
+        format,
+        filename,
+        size: exportContent.length
+      };
+
+    } catch (error) {
+      console.error('[ExportManager] Export failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  gatherExportData(options) {
+    const data = {
+      metadata: this.generateMetadata(),
+      experiment: {
+        userId: this.experimentManager.userId,
+        sessionOrder: this.experimentManager.sessionOrder,
+        speedConfigurations: this.experimentManager.PERMUTATIONS,
+        completedSessions: this.experimentManager.getCompletedSessionsCount(),
+        totalSessions: 9
+      },
+      sessions: this.experimentManager.metrics,
+      analytics: this.sessionManager.getSessionAnalytics(),
+      systemInfo: {
+        deviceInfo: options.includeDeviceInfo ? this.getDeviceInfo() : null,
+        browserInfo: options.includeDeviceInfo ? this.getBrowserInfo() : null,
+        exportTimestamp: new Date().toISOString()
+      }
+    };
+
+    if (options.includeRawEvents) {
+      data.rawEvents = this.extractAllEvents();
+    }
+
+    if (options.includeAnalytics) {
+      data.statisticalSummary = this.generateStatisticalSummary();
+      data.performanceMetrics = this.generatePerformanceMetrics();
+    }
+
+    return data;
+  }
+
+  processDataForExport(data, options) {
+    let processedData = JSON.parse(JSON.stringify(data)); // Deep clone
+
+    if (options.anonymize) {
+      processedData = this.anonymizeData(processedData);
+    }
+
+    if (options.compression) {
+      processedData = this.compressData(processedData);
+    }
+
+    return processedData;
+  }
+
+  generateMetadata() {
+    return {
+      experimentName: 'Pac-Man Speed Configuration Research',
+      version: '1.0.0',
+      description: 'Research study investigating effects of speed configurations on gameplay',
+      exportDate: new Date().toISOString(),
+      dataStructure: {
+        sessions: 'Array of session objects with metrics and events',
+        events: 'Individual game events with timestamps and context',
+        analytics: 'Aggregated statistics and performance metrics',
+        configurations: 'Speed permutations used in the experiment'
+      },
+      variables: {
+        independent: ['pacman_speed', 'ghost_speed'],
+        dependent: ['ghosts_eaten', 'pellets_eaten', 'deaths', 'successful_turns', 'turn_accuracy']
+      }
+    };
+  }
+
+  extractAllEvents() {
+    const allEvents = [];
+    
+    this.experimentManager.metrics.forEach(session => {
+      if (session.events) {
+        session.events.forEach(event => {
+          allEvents.push({
+            ...event,
+            sessionId: session.sessionId,
+            speedConfig: session.speedConfig,
+            permutationId: session.permutationId
+          });
+        });
+      }
+    });
+
+    return allEvents.sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  generateStatisticalSummary() {
+    const sessions = this.experimentManager.metrics;
+    if (sessions.length === 0) return null;
+
+    const summary = {
+      sessions: {
+        total: sessions.length,
+        completed: sessions.filter(s => s.summary).length
+      },
+      performance: this.calculatePerformanceStats(sessions),
+      speedAnalysis: this.analyzeSpeedEffects(sessions),
+      turnAnalysis: this.analyzeTurnPerformance(sessions),
+      timeAnalysis: this.analyzeTimeMetrics(sessions)
+    };
+
+    return summary;
+  }
+
+  calculatePerformanceStats(sessions) {
+    const metrics = ['totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths', 'successfulTurns', 'totalTurns'];
+    const stats = {};
+
+    metrics.forEach(metric => {
+      const values = sessions
+        .filter(s => s.summary && s.summary[metric] !== undefined)
+        .map(s => s.summary[metric]);
+
+      if (values.length > 0) {
+        stats[metric] = {
+          mean: this.calculateMean(values),
+          median: this.calculateMedian(values),
+          std: this.calculateStandardDeviation(values),
+          min: Math.min(...values),
+          max: Math.max(...values),
+          count: values.length
+        };
+      }
+    });
+
+    // Calculate turn accuracy
+    const accuracyValues = sessions
+      .filter(s => s.summary && s.summary.totalTurns > 0)
+      .map(s => s.summary.successfulTurns / s.summary.totalTurns);
+
+    if (accuracyValues.length > 0) {
+      stats.turnAccuracy = {
+        mean: this.calculateMean(accuracyValues),
+        median: this.calculateMedian(accuracyValues),
+        std: this.calculateStandardDeviation(accuracyValues),
+        min: Math.min(...accuracyValues),
+        max: Math.max(...accuracyValues),
+        count: accuracyValues.length
+      };
+    }
+
+    return stats;
+  }
+
+  analyzeSpeedEffects(sessions) {
+    const speedGroups = {
+      pacman: { slow: [], normal: [], fast: [] },
+      ghost: { slow: [], normal: [], fast: [] }
+    };
+
+    sessions.forEach(session => {
+      if (session.speedConfig && session.summary) {
+        speedGroups.pacman[session.speedConfig.pacman].push(session.summary);
+        speedGroups.ghost[session.speedConfig.ghost].push(session.summary);
+      }
+    });
+
+    const analysis = {};
+
+    ['pacman', 'ghost'].forEach(entityType => {
+      analysis[entityType] = {};
+      
+      ['slow', 'normal', 'fast'].forEach(speed => {
+        const group = speedGroups[entityType][speed];
+        if (group.length > 0) {
+          analysis[entityType][speed] = {
+            sessionCount: group.length,
+            avgGhostsEaten: this.calculateMean(group.map(s => s.totalGhostsEaten || 0)),
+            avgPelletsEaten: this.calculateMean(group.map(s => s.totalPelletsEaten || 0)),
+            avgDeaths: this.calculateMean(group.map(s => s.totalDeaths || 0)),
+            avgTurnAccuracy: this.calculateMean(group.map(s => 
+              s.totalTurns > 0 ? s.successfulTurns / s.totalTurns : 0
+            ))
+          };
+        }
+      });
+    });
+
+    return analysis;
+  }
+
+  analyzeTurnPerformance(sessions) {
+    const allEvents = this.extractAllEvents();
+    const turnEvents = allEvents.filter(e => e.type === 'turnComplete');
+    
+    if (turnEvents.length === 0) return null;
+
+    const successfulTurns = turnEvents.filter(e => e.success);
+    const failedTurns = turnEvents.filter(e => !e.success);
+
+    return {
+      totalTurns: turnEvents.length,
+      successfulTurns: successfulTurns.length,
+      failedTurns: failedTurns.length,
+      successRate: successfulTurns.length / turnEvents.length,
+      avgDuration: {
+        successful: this.calculateMean(successfulTurns.map(e => e.duration || 0)),
+        failed: this.calculateMean(failedTurns.map(e => e.duration || 0))
+      }
+    };
+  }
+
+  analyzeTimeMetrics(sessions) {
+    const gameTimes = sessions
+      .filter(s => s.summary && s.summary.gameTime)
+      .map(s => s.summary.gameTime);
+
+    if (gameTimes.length === 0) return null;
+
+    return {
+      totalPlayTime: gameTimes.reduce((sum, time) => sum + time, 0),
+      avgSessionDuration: this.calculateMean(gameTimes),
+      medianSessionDuration: this.calculateMedian(gameTimes),
+      shortestSession: Math.min(...gameTimes),
+      longestSession: Math.max(...gameTimes)
+    };
+  }
+
+  exportAsJSON(data, options) {
+    const content = JSON.stringify(data, null, options.minify ? 0 : 2);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const suffix = options.anonymize ? '_anonymized' : '';
+    
+    return {
+      content,
+      filename: `pacman_experiment_${this.experimentManager.userId}${suffix}_${timestamp}.json`,
+      mimeType: 'application/json'
+    };
+  }
+
+  exportAsCSV(data, options) {
+    const csvSections = [];
+    
+    // Session summary CSV
+    if (data.sessions && data.sessions.length > 0) {
+      const sessionHeaders = [
+        'sessionId', 'userId', 'permutationId', 'pacmanSpeed', 'ghostSpeed',
+        'totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths', 
+        'successfulTurns', 'totalTurns', 'turnAccuracy', 'gameTime'
+      ];
+      
+      const sessionRows = data.sessions.map(session => [
+        session.sessionId,
+        session.userId,
+        session.permutationId,
+        session.speedConfig?.pacman || '',
+        session.speedConfig?.ghost || '',
+        session.summary?.totalGhostsEaten || 0,
+        session.summary?.totalPelletsEaten || 0,
+        session.summary?.totalDeaths || 0,
+        session.summary?.successfulTurns || 0,
+        session.summary?.totalTurns || 0,
+        session.summary?.totalTurns > 0 ? session.summary.successfulTurns / session.summary.totalTurns : 0,
+        session.summary?.gameTime || 0
+      ]);
+
+      csvSections.push('# Session Summary');
+      csvSections.push(sessionHeaders.join(','));
+      csvSections.push(...sessionRows.map(row => row.join(',')));
+      csvSections.push('');
+    }
+
+    // Events CSV
+    if (data.rawEvents && data.rawEvents.length > 0) {
+      const eventHeaders = [
+        'sessionId', 'eventType', 'timestamp', 'time', 'pacmanSpeed', 'ghostSpeed'
+      ];
+      
+      const eventRows = data.rawEvents.map(event => [
+        event.sessionId,
+        event.type,
+        event.timestamp,
+        event.time,
+        event.speedConfig?.pacman || '',
+        event.speedConfig?.ghost || ''
+      ]);
+
+      csvSections.push('# Raw Events');
+      csvSections.push(eventHeaders.join(','));
+      csvSections.push(...eventRows.map(row => row.join(',')));
+    }
+
+    const content = csvSections.join('\n');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const suffix = options.anonymize ? '_anonymized' : '';
+    
+    return {
+      content,
+      filename: `pacman_experiment_${this.experimentManager.userId}${suffix}_${timestamp}.csv`,
+      mimeType: 'text/csv'
+    };
+  }
+
+  exportAsExcel(data, options) {
+    // Generate XLSX-compatible CSV with multiple sheets info
+    const content = this.generateExcelCompatibleFormat(data);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const suffix = options.anonymize ? '_anonymized' : '';
+    
+    return {
+      content,
+      filename: `pacman_experiment_${this.experimentManager.userId}${suffix}_${timestamp}.xlsx.csv`,
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    };
+  }
+
+  exportAsSPSS(data, options) {
+    const spssScript = this.generateSPSSScript(data);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const suffix = options.anonymize ? '_anonymized' : '';
+    
+    return {
+      content: spssScript,
+      filename: `pacman_experiment_${this.experimentManager.userId}${suffix}_${timestamp}.sps`,
+      mimeType: 'text/plain'
+    };
+  }
+
+  exportAsR(data, options) {
+    const rScript = this.generateRScript(data);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const suffix = options.anonymize ? '_anonymized' : '';
+    
+    return {
+      content: rScript,
+      filename: `pacman_experiment_${this.experimentManager.userId}${suffix}_${timestamp}.R`,
+      mimeType: 'text/plain'
+    };
+  }
+
+  exportAsPython(data, options) {
+    const pythonScript = this.generatePythonScript(data);
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const suffix = options.anonymize ? '_anonymized' : '';
+    
+    return {
+      content: pythonScript,
+      filename: `pacman_experiment_${this.experimentManager.userId}${suffix}_${timestamp}.py`,
+      mimeType: 'text/plain'
+    };
+  }
+
+  generateSPSSScript(data) {
+    return `* SPSS Syntax for Pac-Man Speed Configuration Research
+* Generated: ${new Date().toISOString()}
+* User: ${this.experimentManager.userId}
+
+* Import data
+GET DATA
+  /TYPE=TXT
+  /FILE='pacman_experiment_data.csv'
+  /DELCASE=LINE
+  /DELIMITERS=","
+  /QUALIFIER='"'
+  /ARRANGEMENT=DELIMITED
+  /FIRSTCASE=2
+  /VARIABLES=
+    sessionId F3.0
+    userId A20
+    permutationId F2.0
+    pacmanSpeed A10
+    ghostSpeed A10
+    totalGhostsEaten F5.0
+    totalPelletsEaten F6.0
+    totalDeaths F4.0
+    successfulTurns F5.0
+    totalTurns F5.0
+    turnAccuracy F8.4
+    gameTime F10.0.
+
+* Define value labels
+VALUE LABELS pacmanSpeed
+  'slow' 'Slow Speed'
+  'normal' 'Normal Speed'
+  'fast' 'Fast Speed'.
+
+VALUE LABELS ghostSpeed
+  'slow' 'Slow Speed'
+  'normal' 'Normal Speed'
+  'fast' 'Fast Speed'.
+
+* Basic descriptive statistics
+DESCRIPTIVES VARIABLES=totalGhostsEaten totalPelletsEaten totalDeaths turnAccuracy gameTime
+  /STATISTICS=MEAN STDDEV MIN MAX.
+
+* ANOVA for speed effects
+UNIANOVA totalGhostsEaten BY pacmanSpeed ghostSpeed
+  /METHOD=SSTYPE(3)
+  /INTERCEPT=INCLUDE
+  /PRINT=ETASQ DESCRIPTIVE
+  /CRITERIA=ALPHA(.05)
+  /DESIGN=pacmanSpeed ghostSpeed pacmanSpeed*ghostSpeed.
+
+UNIANOVA turnAccuracy BY pacmanSpeed ghostSpeed
+  /METHOD=SSTYPE(3)
+  /INTERCEPT=INCLUDE
+  /PRINT=ETASQ DESCRIPTIVE
+  /CRITERIA=ALPHA(.05)
+  /DESIGN=pacmanSpeed ghostSpeed pacmanSpeed*ghostSpeed.
+
+* Correlation analysis
+CORRELATIONS
+  /VARIABLES=totalGhostsEaten totalPelletsEaten totalDeaths turnAccuracy gameTime
+  /PRINT=TWOTAIL NOSIG
+  /MISSING=PAIRWISE.
+
+EXECUTE.`;
+  }
+
+  generateRScript(data) {
+    return `# R Analysis Script for Pac-Man Speed Configuration Research
+# Generated: ${new Date().toISOString()}
+# User: ${this.experimentManager.userId}
+
+# Load required libraries
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+library(car)
+library(psych)
+
+# Import data
+data <- read.csv("pacman_experiment_data.csv", stringsAsFactors = TRUE)
+
+# Basic data exploration
+cat("Data Structure:\\n")
+str(data)
+
+cat("\\nDescriptive Statistics:\\n")
+describe(data[c("totalGhostsEaten", "totalPelletsEaten", "totalDeaths", "turnAccuracy", "gameTime")])
+
+# Speed configuration analysis
+cat("\\nSpeed Configuration Summary:\\n")
+data %>% 
+  group_by(pacmanSpeed, ghostSpeed) %>%
+  summarise(
+    n = n(),
+    mean_ghosts = mean(totalGhostsEaten, na.rm = TRUE),
+    mean_pellets = mean(totalPelletsEaten, na.rm = TRUE),
+    mean_accuracy = mean(turnAccuracy, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# ANOVA for ghosts eaten
+ghosts_anova <- aov(totalGhostsEaten ~ pacmanSpeed * ghostSpeed, data = data)
+cat("\\nGhosts Eaten ANOVA:\\n")
+summary(ghosts_anova)
+
+# ANOVA for turn accuracy
+accuracy_anova <- aov(turnAccuracy ~ pacmanSpeed * ghostSpeed, data = data)
+cat("\\nTurn Accuracy ANOVA:\\n")
+summary(accuracy_anova)
+
+# Visualization
+# Performance by Pac-Man speed
+p1 <- ggplot(data, aes(x = pacmanSpeed, y = totalGhostsEaten, fill = pacmanSpeed)) +
+  geom_boxplot() +
+  labs(title = "Ghosts Eaten by Pac-Man Speed",
+       x = "Pac-Man Speed", y = "Total Ghosts Eaten") +
+  theme_minimal()
+
+# Performance by Ghost speed  
+p2 <- ggplot(data, aes(x = ghostSpeed, y = turnAccuracy, fill = ghostSpeed)) +
+  geom_boxplot() +
+  labs(title = "Turn Accuracy by Ghost Speed",
+       x = "Ghost Speed", y = "Turn Accuracy") +
+  theme_minimal()
+
+# Interaction plot
+p3 <- ggplot(data, aes(x = pacmanSpeed, y = totalGhostsEaten, color = ghostSpeed)) +
+  geom_point(position = position_jitter(width = 0.2)) +
+  stat_summary(fun = mean, geom = "line", aes(group = ghostSpeed)) +
+  labs(title = "Speed Configuration Interaction Effect",
+       x = "Pac-Man Speed", y = "Total Ghosts Eaten",
+       color = "Ghost Speed") +
+  theme_minimal()
+
+# Display plots
+print(p1)
+print(p2)
+print(p3)
+
+# Correlation matrix
+cat("\\nCorrelation Matrix:\\n")
+cor_matrix <- cor(data[c("totalGhostsEaten", "totalPelletsEaten", "totalDeaths", "turnAccuracy", "gameTime")], 
+                  use = "complete.obs")
+print(cor_matrix)
+
+# Save results
+write.csv(data, "processed_pacman_data.csv", row.names = FALSE)
+cat("\\nAnalysis complete. Results saved to processed_pacman_data.csv\\n")`;
+  }
+
+  generatePythonScript(data) {
+    return `# Python Analysis Script for Pac-Man Speed Configuration Research
+# Generated: ${new Date().toISOString()}
+# User: ${this.experimentManager.userId}
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy import stats
+from scipy.stats import f_oneway
+import warnings
+warnings.filterwarnings('ignore')
+
+# Load data
+data = pd.read_csv('pacman_experiment_data.csv')
+
+print("Data Structure:")
+print(data.info())
+print("\\nFirst few rows:")
+print(data.head())
+
+# Descriptive statistics
+print("\\nDescriptive Statistics:")
+numeric_cols = ['totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths', 'turnAccuracy', 'gameTime']
+print(data[numeric_cols].describe())
+
+# Group analysis by speed configurations
+print("\\nSpeed Configuration Analysis:")
+speed_analysis = data.groupby(['pacmanSpeed', 'ghostSpeed'])[numeric_cols].agg(['mean', 'std', 'count'])
+print(speed_analysis)
+
+# Statistical tests
+print("\\nStatistical Analysis:")
+
+# ANOVA for ghosts eaten by Pac-Man speed
+pacman_groups = [group['totalGhostsEaten'].values for name, group in data.groupby('pacmanSpeed')]
+f_stat, p_value = f_oneway(*pacman_groups)
+print(f"Pac-Man Speed Effect on Ghosts Eaten: F={f_stat:.3f}, p={p_value:.3f}")
+
+# ANOVA for turn accuracy by ghost speed
+ghost_groups = [group['turnAccuracy'].values for name, group in data.groupby('ghostSpeed')]
+f_stat, p_value = f_oneway(*ghost_groups)
+print(f"Ghost Speed Effect on Turn Accuracy: F={f_stat:.3f}, p={p_value:.3f}")
+
+# Correlation analysis
+print("\\nCorrelation Matrix:")
+correlation_matrix = data[numeric_cols].corr()
+print(correlation_matrix)
+
+# Visualizations
+plt.style.use('seaborn')
+fig, axes = plt.subplots(2, 2, figsize=(15, 12))
+
+# Ghosts eaten by Pac-Man speed
+sns.boxplot(data=data, x='pacmanSpeed', y='totalGhostsEaten', ax=axes[0,0])
+axes[0,0].set_title('Ghosts Eaten by Pac-Man Speed')
+
+# Turn accuracy by ghost speed
+sns.boxplot(data=data, x='ghostSpeed', y='turnAccuracy', ax=axes[0,1])
+axes[0,1].set_title('Turn Accuracy by Ghost Speed')
+
+# Heatmap of speed combinations
+pivot_data = data.pivot_table(values='totalGhostsEaten', index='pacmanSpeed', columns='ghostSpeed', aggfunc='mean')
+sns.heatmap(pivot_data, annot=True, fmt='.1f', ax=axes[1,0])
+axes[1,0].set_title('Mean Ghosts Eaten by Speed Configuration')
+
+# Correlation heatmap
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', center=0, ax=axes[1,1])
+axes[1,1].set_title('Correlation Matrix')
+
+plt.tight_layout()
+plt.savefig('pacman_analysis_plots.png', dpi=300, bbox_inches='tight')
+plt.show()
+
+# Advanced analysis
+print("\\nAdvanced Analysis:")
+
+# Two-way ANOVA using statsmodels
+try:
+    import statsmodels.api as sm
+    from statsmodels.formula.api import ols
+    
+    model = ols('totalGhostsEaten ~ C(pacmanSpeed) + C(ghostSpeed) + C(pacmanSpeed):C(ghostSpeed)', data=data).fit()
+    anova_table = sm.stats.anova_lm(model, typ=2)
+    print("Two-way ANOVA Results:")
+    print(anova_table)
+except ImportError:
+    print("statsmodels not available for advanced ANOVA")
+
+# Export processed data
+data.to_csv('processed_pacman_data.csv', index=False)
+print("\\nAnalysis complete. Results saved to processed_pacman_data.csv")
+print("Plots saved to pacman_analysis_plots.png")`;
+  }
+
+  // Utility functions for statistical calculations
+  calculateMean(values) {
+    return values.length > 0 ? values.reduce((sum, val) => sum + val, 0) / values.length : 0;
+  }
+
+  calculateMedian(values) {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  }
+
+  calculateStandardDeviation(values) {
+    if (values.length <= 1) return 0;
+    const mean = this.calculateMean(values);
+    const squaredDiffs = values.map(val => Math.pow(val - mean, 2));
+    const variance = this.calculateMean(squaredDiffs);
+    return Math.sqrt(variance);
+  }
+
+  generateExcelCompatibleFormat(data) {
+    // Simple Excel-compatible format
+    const { content } = this.exportAsCSV(data, {});
+    return content;
+  }
+
+  anonymizeData(data) {
+    const anonymized = JSON.parse(JSON.stringify(data));
+    
+    if (this.anonymization.fieldMasking.userId.enabled) {
+      anonymized.experiment.userId = this.hashValue(anonymized.experiment.userId);
+      if (anonymized.sessions) {
+        anonymized.sessions.forEach(session => {
+          session.userId = this.hashValue(session.userId);
+        });
+      }
+    }
+
+    if (this.anonymization.fieldMasking.deviceInfo.enabled) {
+      delete anonymized.systemInfo.deviceInfo;
+    }
+
+    if (this.anonymization.fieldMasking.timestamps.enabled) {
+      // Convert to relative timestamps
+      this.convertToRelativeTimestamps(anonymized);
+    }
+
+    return anonymized;
+  }
+
+  hashValue(value) {
+    // Simple hash function for anonymization
+    let hash = 0;
+    const str = value + this.anonymization.hashSalt;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return `user_${Math.abs(hash).toString(36)}`;
+  }
+
+  convertToRelativeTimestamps(data) {
+    // Convert absolute timestamps to relative (first event = 0)
+    if (data.rawEvents && data.rawEvents.length > 0) {
+      const baseTime = data.rawEvents[0].timestamp;
+      data.rawEvents.forEach(event => {
+        event.relativeTimestamp = event.timestamp - baseTime;
+        delete event.timestamp;
+      });
+    }
+  }
+
+  compressData(data) {
+    // Simple data compression by removing unnecessary fields
+    const compressed = JSON.parse(JSON.stringify(data));
+    
+    // Remove verbose debug information
+    if (compressed.sessions) {
+      compressed.sessions.forEach(session => {
+        if (session.events) {
+          session.events.forEach(event => {
+            delete event.pacmanPosition;
+            delete event.pacmanGridPosition;
+          });
+        }
+      });
+    }
+
+    return compressed;
+  }
+
+  getDeviceInfo() {
+    return {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      language: navigator.language,
+      screenResolution: `${screen.width}x${screen.height}`,
+      viewport: `${window.innerWidth}x${window.innerHeight}`
+    };
+  }
+
+  getBrowserInfo() {
+    return {
+      url: window.location.href,
+      referrer: document.referrer,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+    };
+  }
+
+  downloadFile(filename, content, mimeType = 'text/plain') {
+    const blob = new Blob([content], { type: mimeType });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }
+
+  logExport(format, options, size) {
+    if (this.DEBUG) {
+      console.log(`[ExportManager] Export completed:`, {
+        format,
+        size: `${Math.round(size / 1024)}KB`,
+        options,
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+
+  generatePerformanceMetrics() {
+    return {
+      exportCapabilities: this.exportFormats,
+      anonymizationEnabled: this.anonymization.enabled,
+      dataIntegrity: this.validateDataIntegrity(),
+      completeness: this.assessDataCompleteness()
+    };
+  }
+
+  validateDataIntegrity() {
+    const sessions = this.experimentManager.metrics;
+    const issues = [];
+
+    sessions.forEach(session => {
+      if (!session.userId) issues.push(`Session ${session.sessionId} missing userId`);
+      if (!session.speedConfig) issues.push(`Session ${session.sessionId} missing speedConfig`);
+      if (!session.summary) issues.push(`Session ${session.sessionId} missing summary`);
+    });
+
+    return {
+      valid: issues.length === 0,
+      issues
+    };
+  }
+
+  assessDataCompleteness() {
+    const totalSessions = 9;
+    const completedSessions = this.experimentManager.getCompletedSessionsCount();
+    
+    return {
+      sessionCompleteness: completedSessions / totalSessions,
+      hasAllSpeedConfigurations: this.checkAllSpeedConfigurations(),
+      dataQualityScore: this.calculateDataQualityScore()
+    };
+  }
+
+  checkAllSpeedConfigurations() {
+    const sessions = this.experimentManager.metrics;
+    const configCombinations = new Set();
+    
+    sessions.forEach(session => {
+      if (session.speedConfig) {
+        configCombinations.add(`${session.speedConfig.pacman}-${session.speedConfig.ghost}`);
+      }
+    });
+
+    return configCombinations.size === 9;
+  }
+
+  calculateDataQualityScore() {
+    const sessions = this.experimentManager.metrics;
+    let score = 0;
+    let maxScore = 0;
+
+    sessions.forEach(session => {
+      maxScore += 5; // Max points per session
+      
+      if (session.summary) score += 1;
+      if (session.events && session.events.length > 0) score += 1;
+      if (session.speedConfig) score += 1;
+      if (session.summary && session.summary.gameTime > 0) score += 1;
+      if (session.events && session.events.length > 10) score += 1; // Meaningful activity
+    });
+
+    return maxScore > 0 ? score / maxScore : 0;
+  }
+
+  enableAnonymization(fieldConfig = {}) {
+    this.anonymization.enabled = true;
+    this.anonymization.fieldMasking = {
+      ...this.anonymization.fieldMasking,
+      ...fieldConfig
+    };
+    
+    if (this.DEBUG) {
+      console.log('[ExportManager] Anonymization enabled:', this.anonymization.fieldMasking);
+    }
+  }
+
+  disableAnonymization() {
+    this.anonymization.enabled = false;
+    
+    if (this.DEBUG) {
+      console.log('[ExportManager] Anonymization disabled');
+    }
+  }
+
+  handleExportRequest(detail) {
+    const { format, options } = detail;
+    return this.exportData(format, options);
+  }
+
+  generateCompletionReport() {
+    const report = {
+      experimentCompleted: true,
+      completionTime: new Date().toISOString(),
+      totalSessions: this.experimentManager.getCompletedSessionsCount(),
+      dataQuality: this.assessDataCompleteness(),
+      analytics: this.generateStatisticalSummary(),
+      exportRecommendations: this.getExportRecommendations()
+    };
+
+    if (this.DEBUG) {
+      console.log('[ExportManager] Experiment completion report:', report);
+    }
+
+    return report;
+  }
+
+  getExportRecommendations() {
+    return {
+      recommendedFormats: ['json', 'csv', 'r'],
+      statisticalAnalysis: 'Use R or Python scripts for comprehensive analysis',
+      dataSharing: 'Enable anonymization for public data sharing',
+      archival: 'Export to JSON for long-term data preservation'
+    };
+  }
+
+  getDebugInfo() {
+    return {
+      isInitialized: this.isInitialized,
+      supportedFormats: this.exportFormats,
+      anonymizationConfig: this.anonymization,
+      dataIntegrity: this.validateDataIntegrity(),
+      completeness: this.assessDataCompleteness()
+    };
   }
 }
 
@@ -4011,12 +5371,12 @@ class MetricsCollector {
 
   initialize(gameCoordinator) {
     if (this.isInitialized) return;
-    
+
     this.gameCoordinator = gameCoordinator;
     this.bindGameEvents();
     this.initializeTurnTracking();
     this.isInitialized = true;
-    
+
     if (this.DEBUG) {
       console.log('[MetricsCollector] Initialized with game coordinator');
     }
@@ -4039,7 +5399,7 @@ class MetricsCollector {
       this.logMetric('pelletEaten', {
         type: 'pacdot',
         position: this.getCurrentPacmanPosition(),
-        consecutiveTurns: this.consecutiveSuccessfulTurns
+        consecutiveTurns: this.consecutiveSuccessfulTurns,
       });
     });
 
@@ -4047,7 +5407,7 @@ class MetricsCollector {
       this.logMetric('pelletEaten', {
         type: 'powerPellet',
         position: this.getCurrentPacmanPosition(),
-        consecutiveTurns: this.consecutiveSuccessfulTurns
+        consecutiveTurns: this.consecutiveSuccessfulTurns,
       });
     });
 
@@ -4056,7 +5416,7 @@ class MetricsCollector {
         ghostId: e.detail.ghost.name,
         ghostMode: e.detail.ghost.mode,
         position: this.getCurrentPacmanPosition(),
-        consecutiveTurns: this.consecutiveSuccessfulTurns
+        consecutiveTurns: this.consecutiveSuccessfulTurns,
       });
     });
 
@@ -4065,9 +5425,9 @@ class MetricsCollector {
         cause: 'ghost_collision',
         position: this.getCurrentPacmanPosition(),
         consecutiveTurns: this.consecutiveSuccessfulTurns,
-        turnInProgress: this.turnTracker !== null
+        turnInProgress: this.turnTracker !== null,
       });
-      
+
       this.resetTurnTracking();
     });
   }
@@ -4078,7 +5438,7 @@ class MetricsCollector {
         type: 'fruit',
         points: detail.points,
         position: this.getCurrentPacmanPosition(),
-        consecutiveTurns: this.consecutiveSuccessfulTurns
+        consecutiveTurns: this.consecutiveSuccessfulTurns,
       });
     }
   }
@@ -4097,12 +5457,12 @@ class MetricsCollector {
   updateTurnTracking() {
     if (!this.isExperimentActive()) return;
 
-    const pacman = this.gameCoordinator.pacman;
+    const { pacman } = this.gameCoordinator;
     if (!pacman || !pacman.moving) return;
 
     const currentPosition = this.getCurrentPacmanGridPosition();
     const currentDirection = pacman.direction;
-    
+
     if (!currentPosition) return;
 
     if (this.hasDirectionChanged(currentDirection)) {
@@ -4121,7 +5481,7 @@ class MetricsCollector {
     if (this.turnTracker) {
       this.completeTurn(position, newDirection);
     }
-    
+
     this.startNewTurn(position, newDirection);
   }
 
@@ -4131,11 +5491,11 @@ class MetricsCollector {
       startDirection: this.lastDirection,
       targetDirection: direction,
       startTime: Date.now(),
-      successful: false
+      successful: false,
     };
-    
+
     this.turnStartTime = Date.now();
-    
+
     if (this.DEBUG) {
       console.log('[MetricsCollector] Turn started:', this.turnTracker);
     }
@@ -4146,21 +5506,21 @@ class MetricsCollector {
 
     const turnDuration = Date.now() - this.turnStartTime;
     const successful = this.isTurnSuccessful(actualDirection);
-    
+
     this.turnTracker.endPosition = { ...position };
     this.turnTracker.actualDirection = actualDirection;
     this.turnTracker.duration = turnDuration;
     this.turnTracker.successful = successful;
-    
+
     this.logMetric('turnComplete', {
       success: successful,
       startPosition: this.turnTracker.startPosition,
       endPosition: this.turnTracker.endPosition,
       startDirection: this.turnTracker.startDirection,
       targetDirection: this.turnTracker.targetDirection,
-      actualDirection: actualDirection,
+      actualDirection,
       duration: turnDuration,
-      consecutiveTurns: successful ? this.consecutiveSuccessfulTurns + 1 : 0
+      consecutiveTurns: successful ? this.consecutiveSuccessfulTurns + 1 : 0,
     });
 
     if (successful) {
@@ -4178,16 +5538,16 @@ class MetricsCollector {
 
   isTurnSuccessful(actualDirection) {
     if (!this.turnTracker) return false;
-    
+
     const intended = this.turnTracker.targetDirection;
     const actual = actualDirection;
-    
+
     const success = intended === actual;
-    
+
     if (this.DEBUG && !success) {
       console.log(`[MetricsCollector] Turn failed: intended ${intended}, actual ${actual}`);
     }
-    
+
     return success;
   }
 
@@ -4206,7 +5566,7 @@ class MetricsCollector {
     this.lastPosition = null;
     this.lastDirection = null;
     this.turnStartTime = null;
-    
+
     if (this.DEBUG) {
       console.log('[MetricsCollector] Turn tracking reset');
     }
@@ -4214,7 +5574,7 @@ class MetricsCollector {
 
   resetMetrics() {
     this.resetTurnTracking();
-    
+
     if (this.DEBUG) {
       console.log('[MetricsCollector] Metrics reset for new session');
     }
@@ -4224,10 +5584,10 @@ class MetricsCollector {
     if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
       return null;
     }
-    
+
     return {
       left: this.gameCoordinator.pacman.position.left,
-      top: this.gameCoordinator.pacman.position.top
+      top: this.gameCoordinator.pacman.position.top,
     };
   }
 
@@ -4235,15 +5595,15 @@ class MetricsCollector {
     if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
       return null;
     }
-    
-    const pacman = this.gameCoordinator.pacman;
+
+    const { pacman } = this.gameCoordinator;
     if (!pacman.characterUtil) {
       return null;
     }
-    
+
     return pacman.characterUtil.determineGridPosition(
-      pacman.position, 
-      this.gameCoordinator.scaledTileSize
+      pacman.position,
+      this.gameCoordinator.scaledTileSize,
     );
   }
 
@@ -4263,11 +5623,11 @@ class MetricsCollector {
       ...data,
       timestamp: Date.now(),
       pacmanPosition: this.getCurrentPacmanPosition(),
-      pacmanGridPosition: this.getCurrentPacmanGridPosition()
+      pacmanGridPosition: this.getCurrentPacmanGridPosition(),
     };
 
     this.experimentManager.logEvent(type, enrichedData);
-    
+
     if (this.DEBUG) {
       console.log(`[MetricsCollector] Logged metric: ${type}`, enrichedData);
     }
@@ -4277,13 +5637,13 @@ class MetricsCollector {
     if (!this.experimentManager || !this.experimentManager.currentMetrics) {
       return null;
     }
-    
+
     return {
       session: this.experimentManager.currentMetrics.sessionId,
       summary: this.experimentManager.currentMetrics.summary,
       events: this.experimentManager.currentMetrics.events.length,
       consecutiveTurns: this.consecutiveSuccessfulTurns,
-      turnInProgress: this.turnTracker !== null
+      turnInProgress: this.turnTracker !== null,
     };
   }
 
@@ -4291,8 +5651,8 @@ class MetricsCollector {
     const metrics = this.getCurrentMetrics();
     if (!metrics) return null;
 
-    const events = this.experimentManager.currentMetrics.events;
-    
+    const { events } = this.experimentManager.currentMetrics;
+
     return {
       ...metrics,
       eventBreakdown: {
@@ -4300,10 +5660,10 @@ class MetricsCollector {
         pelletsEaten: events.filter(e => e.type === 'pelletEaten').length,
         deaths: events.filter(e => e.type === 'death').length,
         turnsCompleted: events.filter(e => e.type === 'turnComplete').length,
-        successfulTurns: events.filter(e => e.type === 'turnComplete' && e.success).length
+        successfulTurns: events.filter(e => e.type === 'turnComplete' && e.success).length,
       },
       recentEvents: events.slice(-5),
-      turnTracker: this.turnTracker
+      turnTracker: this.turnTracker,
     };
   }
 
@@ -4315,7 +5675,7 @@ class MetricsCollector {
       turnInProgress: this.turnTracker !== null,
       lastPosition: this.lastPosition,
       lastDirection: this.lastDirection,
-      currentMetrics: this.getCurrentMetrics()
+      currentMetrics: this.getCurrentMetrics(),
     };
   }
 }
@@ -4329,7 +5689,7 @@ class ProgressController {
       currentPhase: 'pre_session',
       allowedActions: ['start_session'],
       restrictions: [],
-      warnings: []
+      warnings: [],
     };
     this.validationRules = [];
     this.isInitialized = false;
@@ -4338,11 +5698,11 @@ class ProgressController {
 
   initialize() {
     if (this.isInitialized) return;
-    
+
     this.setupValidationRules();
     this.bindEvents();
     this.isInitialized = true;
-    
+
     if (this.DEBUG) {
       console.log('[ProgressController] Initialized');
     }
@@ -4353,28 +5713,28 @@ class ProgressController {
       {
         name: 'session_order_integrity',
         check: () => this.validateSessionOrder(),
-        severity: 'error'
+        severity: 'error',
       },
       {
         name: 'user_data_consistency',
         check: () => this.validateUserDataConsistency(),
-        severity: 'error'
+        severity: 'error',
       },
       {
         name: 'session_completion_rate',
         check: () => this.validateSessionCompletionRate(),
-        severity: 'warning'
+        severity: 'warning',
       },
       {
         name: 'session_duration_bounds',
         check: () => this.validateSessionDuration(),
-        severity: 'warning'
+        severity: 'warning',
       },
       {
         name: 'metrics_data_quality',
         check: () => this.validateMetricsQuality(),
-        severity: 'warning'
-      }
+        severity: 'warning',
+      },
     ];
   }
 
@@ -4400,12 +5760,12 @@ class ProgressController {
     this.progressState.currentPhase = 'in_session';
     this.progressState.allowedActions = ['end_session', 'pause_session'];
     this.progressState.restrictions = ['start_new_session', 'change_user'];
-    
+
     const validation = this.runValidation();
     if (validation.hasErrors) {
       this.progressState.warnings.push('Session started with validation errors');
     }
-    
+
     if (this.DEBUG) {
       console.log('[ProgressController] Session started, phase:', this.progressState.currentPhase);
     }
@@ -4413,7 +5773,7 @@ class ProgressController {
 
   handleSessionEnd() {
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
-    
+
     if (completedSessions >= 9) {
       this.progressState.currentPhase = 'experiment_complete';
       this.progressState.allowedActions = ['export_data', 'reset_experiment'];
@@ -4423,9 +5783,9 @@ class ProgressController {
       this.progressState.allowedActions = ['start_next_session', 'export_partial_data'];
       this.progressState.restrictions = [];
     }
-    
+
     this.progressState.warnings = [];
-    
+
     if (this.DEBUG) {
       console.log('[ProgressController] Session ended, phase:', this.progressState.currentPhase);
     }
@@ -4435,9 +5795,9 @@ class ProgressController {
     this.progressState.warnings.push({
       type: 'idle_session',
       message: `Session idle for ${Math.round(detail.idleTime / 1000)} seconds`,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
-    
+
     if (this.DEBUG) {
       console.log('[ProgressController] Session idle detected');
     }
@@ -4447,12 +5807,12 @@ class ProgressController {
     this.progressState.warnings.push({
       type: 'session_timeout',
       message: `Session exceeded maximum duration (${Math.round(detail.sessionTime / 1000)} seconds)`,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
-    
+
     // Force end session
     this.forceEndSession('timeout');
-    
+
     if (this.DEBUG) {
       console.log('[ProgressController] Session timeout, forcing end');
     }
@@ -4460,17 +5820,17 @@ class ProgressController {
 
   forceEndSession(reason) {
     this.progressState.restrictions.push(`forced_end_${reason}`);
-    
+
     // Trigger session end
     window.dispatchEvent(new CustomEvent('forceEndSession', {
-      detail: { reason }
+      detail: { reason },
     }));
   }
 
   canPerformAction(action) {
     const allowed = this.progressState.allowedActions.includes(action);
     const restricted = this.progressState.restrictions.includes(action);
-    
+
     return allowed && !restricted;
   }
 
@@ -4478,9 +5838,9 @@ class ProgressController {
     const validation = {
       allowed: this.canPerformAction(action),
       errors: [],
-      warnings: []
+      warnings: [],
     };
-    
+
     switch (action) {
       case 'start_session':
         this.validateStartSession(validation, context);
@@ -4495,28 +5855,28 @@ class ProgressController {
         this.validateResetExperiment(validation, context);
         break;
     }
-    
+
     return validation;
   }
 
   validateStartSession(validation, context) {
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
-    
+
     if (completedSessions >= 9) {
       validation.errors.push('All sessions already completed');
       validation.allowed = false;
     }
-    
+
     if (this.progressState.currentPhase === 'in_session') {
       validation.errors.push('Session already in progress');
       validation.allowed = false;
     }
-    
+
     if (!this.experimentManager.userId) {
       validation.errors.push('User ID not set');
       validation.allowed = false;
     }
-    
+
     // Check for incomplete session state
     const savedState = this.sessionManager.loadSessionState();
     if (savedState) {
@@ -4529,8 +5889,8 @@ class ProgressController {
       validation.errors.push('No active session to end');
       validation.allowed = false;
     }
-    
-    const currentMetrics = this.experimentManager.currentMetrics;
+
+    const { currentMetrics } = this.experimentManager;
     if (currentMetrics && currentMetrics.events.length === 0) {
       validation.warnings.push('Ending session with no recorded events');
     }
@@ -4538,12 +5898,12 @@ class ProgressController {
 
   validateExportData(validation, context) {
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
-    
+
     if (completedSessions === 0) {
       validation.errors.push('No completed sessions to export');
       validation.allowed = false;
     }
-    
+
     if (!this.testLocalStorage()) {
       validation.warnings.push('Local storage not available - export may be incomplete');
     }
@@ -4554,7 +5914,7 @@ class ProgressController {
       validation.errors.push('Cannot reset during active session');
       validation.allowed = false;
     }
-    
+
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
     if (completedSessions > 0) {
       validation.warnings.push(`Resetting will lose ${completedSessions} completed sessions`);
@@ -4567,197 +5927,195 @@ class ProgressController {
       warnings: [],
       errors: [],
       hasErrors: false,
-      hasWarnings: false
+      hasWarnings: false,
     };
-    
-    this.validationRules.forEach(rule => {
+
+    this.validationRules.forEach((rule) => {
       try {
         const result = rule.check();
-        
+
         if (result.valid) {
           results.passed.push(rule.name);
+        } else if (rule.severity === 'error') {
+          results.errors.push({
+            rule: rule.name,
+            message: result.message,
+            data: result.data,
+          });
+          results.hasErrors = true;
         } else {
-          if (rule.severity === 'error') {
-            results.errors.push({
-              rule: rule.name,
-              message: result.message,
-              data: result.data
-            });
-            results.hasErrors = true;
-          } else {
-            results.warnings.push({
-              rule: rule.name,
-              message: result.message,
-              data: result.data
-            });
-            results.hasWarnings = true;
-          }
+          results.warnings.push({
+            rule: rule.name,
+            message: result.message,
+            data: result.data,
+          });
+          results.hasWarnings = true;
         }
       } catch (error) {
         results.errors.push({
           rule: rule.name,
           message: `Validation rule failed: ${error.message}`,
-          data: { error: error.toString() }
+          data: { error: error.toString() },
         });
         results.hasErrors = true;
       }
     });
-    
+
     return results;
   }
 
   validateSessionOrder() {
-    const sessionOrder = this.experimentManager.sessionOrder;
+    const { sessionOrder } = this.experimentManager;
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
-    
+
     if (sessionOrder.length !== 9) {
       return {
         valid: false,
         message: `Invalid session order length: ${sessionOrder.length}, expected 9`,
-        data: { sessionOrder }
+        data: { sessionOrder },
       };
     }
-    
+
     const uniqueIds = new Set(sessionOrder);
     if (uniqueIds.size !== 9) {
       return {
         valid: false,
         message: 'Session order contains duplicate permutation IDs',
-        data: { sessionOrder, duplicates: sessionOrder.length - uniqueIds.size }
+        data: { sessionOrder, duplicates: sessionOrder.length - uniqueIds.size },
       };
     }
-    
+
     const validIds = sessionOrder.every(id => id >= 0 && id <= 8);
     if (!validIds) {
       return {
         valid: false,
         message: 'Session order contains invalid permutation IDs',
-        data: { sessionOrder }
+        data: { sessionOrder },
       };
     }
-    
+
     return { valid: true };
   }
 
   validateUserDataConsistency() {
-    const userId = this.experimentManager.userId;
-    const metrics = this.experimentManager.metrics;
-    
+    const { userId } = this.experimentManager;
+    const { metrics } = this.experimentManager;
+
     if (!userId) {
       return {
         valid: false,
         message: 'No user ID set',
-        data: {}
+        data: {},
       };
     }
-    
+
     const userIdMismatch = metrics.some(metric => metric.userId !== userId);
     if (userIdMismatch) {
       return {
         valid: false,
         message: 'User ID mismatch in metrics data',
-        data: { userId, metricsCount: metrics.length }
+        data: { userId, metricsCount: metrics.length },
       };
     }
-    
+
     const sessionIdGaps = this.checkSessionIdSequence(metrics);
     if (sessionIdGaps.length > 0) {
       return {
         valid: false,
         message: 'Session ID sequence has gaps',
-        data: { gaps: sessionIdGaps }
+        data: { gaps: sessionIdGaps },
       };
     }
-    
+
     return { valid: true };
   }
 
   checkSessionIdSequence(metrics) {
     const sessionIds = metrics.map(m => m.sessionId).sort((a, b) => a - b);
     const gaps = [];
-    
+
     for (let i = 1; i <= sessionIds.length; i++) {
       if (!sessionIds.includes(i)) {
         gaps.push(i);
       }
     }
-    
+
     return gaps;
   }
 
   validateSessionCompletionRate() {
     const analytics = this.sessionManager.getSessionAnalytics();
-    const completionRate = analytics.totalSessions > 0 
-      ? analytics.completedSessions / analytics.totalSessions 
+    const completionRate = analytics.totalSessions > 0
+      ? analytics.completedSessions / analytics.totalSessions
       : 1;
-    
+
     if (completionRate < 0.8) {
       return {
         valid: false,
         message: `Low session completion rate: ${Math.round(completionRate * 100)}%`,
-        data: analytics
+        data: analytics,
       };
     }
-    
+
     return { valid: true };
   }
 
   validateSessionDuration() {
     const analytics = this.sessionManager.getSessionAnalytics();
     const avgDuration = analytics.averageDuration;
-    
+
     // Expect sessions to be between 2-25 minutes
     const minDuration = 2 * 60 * 1000;
     const maxDuration = 25 * 60 * 1000;
-    
+
     if (avgDuration < minDuration) {
       return {
         valid: false,
         message: `Average session duration too short: ${Math.round(avgDuration / 1000)}s`,
-        data: { avgDuration, minExpected: minDuration }
+        data: { avgDuration, minExpected: minDuration },
       };
     }
-    
+
     if (avgDuration > maxDuration) {
       return {
         valid: false,
         message: `Average session duration too long: ${Math.round(avgDuration / 1000)}s`,
-        data: { avgDuration, maxExpected: maxDuration }
+        data: { avgDuration, maxExpected: maxDuration },
       };
     }
-    
+
     return { valid: true };
   }
 
   validateMetricsQuality() {
-    const currentMetrics = this.experimentManager.currentMetrics;
+    const { currentMetrics } = this.experimentManager;
     if (!currentMetrics) {
       return { valid: true }; // No current session
     }
-    
-    const events = currentMetrics.events;
-    const summary = currentMetrics.summary;
-    
+
+    const { events } = currentMetrics;
+    const { summary } = currentMetrics;
+
     // Check for reasonable event counts
     if (events.length === 0 && Date.now() - this.sessionManager.sessionStartTime > 60000) {
       return {
         valid: false,
         message: 'No events recorded after 1 minute of gameplay',
-        data: { eventCount: events.length, sessionTime: Date.now() - this.sessionManager.sessionStartTime }
+        data: { eventCount: events.length, sessionTime: Date.now() - this.sessionManager.sessionStartTime },
       };
     }
-    
+
     // Check for data consistency between events and summary
     const eventCounts = this.countEventTypes(events);
-    
+
     if (Math.abs(eventCounts.ghostEaten - summary.totalGhostsEaten) > 0) {
       return {
         valid: false,
         message: 'Ghost eaten count mismatch between events and summary',
-        data: { events: eventCounts.ghostEaten, summary: summary.totalGhostsEaten }
+        data: { events: eventCounts.ghostEaten, summary: summary.totalGhostsEaten },
       };
     }
-    
+
     return { valid: true };
   }
 
@@ -4783,7 +6141,7 @@ class ProgressController {
     const validation = this.runValidation();
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
     const analytics = this.sessionManager.getSessionAnalytics();
-    
+
     return {
       phase: this.progressState.currentPhase,
       progress: `${completedSessions}/9`,
@@ -4793,12 +6151,12 @@ class ProgressController {
       warnings: this.progressState.warnings,
       validation,
       analytics: {
-        completionRate: analytics.totalSessions > 0 
-          ? Math.round((analytics.completedSessions / analytics.totalSessions) * 100) 
+        completionRate: analytics.totalSessions > 0
+          ? Math.round((analytics.completedSessions / analytics.totalSessions) * 100)
           : 100,
         averageDuration: Math.round(analytics.averageDuration / 1000),
-        totalEvents: analytics.totalEvents
-      }
+        totalEvents: analytics.totalEvents,
+      },
     };
   }
 
@@ -4807,7 +6165,7 @@ class ProgressController {
       isInitialized: this.isInitialized,
       progressState: this.progressState,
       validationRules: this.validationRules.map(r => r.name),
-      summary: this.getProgressSummary()
+      summary: this.getProgressSummary(),
     };
   }
 }
@@ -5265,18 +6623,18 @@ class SpeedController {
   constructor() {
     this.originalSpeeds = {
       pacman: null,
-      ghosts: {}
+      ghosts: {},
     };
     this.currentMultipliers = {
       pacman: 1.0,
-      ghost: 1.0
+      ghost: 1.0,
     };
     this.isInitialized = false;
   }
 
   initialize(gameCoordinator) {
     if (this.isInitialized) return;
-    
+
     this.gameCoordinator = gameCoordinator;
     this.storeOriginalSpeeds();
     this.bindEvents();
@@ -5290,9 +6648,9 @@ class SpeedController {
     }
 
     this.originalSpeeds.pacman = this.gameCoordinator.pacman.velocityPerMs;
-    
+
     if (this.gameCoordinator.ghosts) {
-      this.gameCoordinator.ghosts.forEach(ghost => {
+      this.gameCoordinator.ghosts.forEach((ghost) => {
         this.originalSpeeds.ghosts[ghost.name] = {
           slowSpeed: ghost.slowSpeed,
           mediumSpeed: ghost.mediumSpeed,
@@ -5300,7 +6658,7 @@ class SpeedController {
           scaredSpeed: ghost.scaredSpeed,
           transitionSpeed: ghost.transitionSpeed,
           eyeSpeed: ghost.eyeSpeed,
-          defaultSpeed: ghost.defaultSpeed
+          defaultSpeed: ghost.defaultSpeed,
         };
       });
     }
@@ -5320,9 +6678,9 @@ class SpeedController {
 
   applySpeedConfiguration(detail) {
     const { pacmanMultiplier, ghostMultiplier, config } = detail;
-    
+
     console.log('[SpeedController] Applying speed config:', config);
-    
+
     this.currentMultipliers.pacman = pacmanMultiplier;
     this.currentMultipliers.ghost = ghostMultiplier;
 
@@ -5337,7 +6695,7 @@ class SpeedController {
 
     this.applyPacmanSpeed(pacmanMultiplier);
     this.applyGhostSpeeds(ghostMultiplier);
-    
+
     console.log('[SpeedController] Speed configuration applied successfully');
   }
 
@@ -5348,7 +6706,7 @@ class SpeedController {
 
     const newSpeed = this.originalSpeeds.pacman * multiplier;
     this.gameCoordinator.pacman.velocityPerMs = newSpeed;
-    
+
     console.log(`[SpeedController] Pacman speed: ${this.originalSpeeds.pacman} * ${multiplier} = ${newSpeed}`);
   }
 
@@ -5357,7 +6715,7 @@ class SpeedController {
       return;
     }
 
-    this.gameCoordinator.ghosts.forEach(ghost => {
+    this.gameCoordinator.ghosts.forEach((ghost) => {
       const originalSpeeds = this.originalSpeeds.ghosts[ghost.name];
       if (!originalSpeeds) {
         console.warn(`[SpeedController] No original speeds found for ghost: ${ghost.name}`);
@@ -5370,7 +6728,7 @@ class SpeedController {
       ghost.scaredSpeed = originalSpeeds.scaredSpeed * multiplier;
       ghost.transitionSpeed = originalSpeeds.transitionSpeed * multiplier;
       ghost.eyeSpeed = originalSpeeds.eyeSpeed * multiplier;
-      
+
       const currentSpeedType = this.determineCurrentSpeedType(ghost, originalSpeeds);
       ghost.defaultSpeed = originalSpeeds[currentSpeedType] * multiplier;
       ghost.velocityPerMs = ghost.defaultSpeed;
@@ -5382,9 +6740,9 @@ class SpeedController {
   determineCurrentSpeedType(ghost, originalSpeeds) {
     if (Math.abs(ghost.defaultSpeed - originalSpeeds.slowSpeed) < 0.001) {
       return 'slowSpeed';
-    } else if (Math.abs(ghost.defaultSpeed - originalSpeeds.mediumSpeed) < 0.001) {
+    } if (Math.abs(ghost.defaultSpeed - originalSpeeds.mediumSpeed) < 0.001) {
       return 'mediumSpeed';
-    } else if (Math.abs(ghost.defaultSpeed - originalSpeeds.fastSpeed) < 0.001) {
+    } if (Math.abs(ghost.defaultSpeed - originalSpeeds.fastSpeed) < 0.001) {
       return 'fastSpeed';
     }
     return 'slowSpeed';
@@ -5392,7 +6750,7 @@ class SpeedController {
 
   resetToOriginalSpeeds() {
     console.log('[SpeedController] Resetting to original speeds');
-    
+
     this.currentMultipliers.pacman = 1.0;
     this.currentMultipliers.ghost = 1.0;
 
@@ -5401,7 +6759,7 @@ class SpeedController {
     }
 
     if (this.gameCoordinator && this.gameCoordinator.ghosts) {
-      this.gameCoordinator.ghosts.forEach(ghost => {
+      this.gameCoordinator.ghosts.forEach((ghost) => {
         const originalSpeeds = this.originalSpeeds.ghosts[ghost.name];
         if (originalSpeeds) {
           ghost.slowSpeed = originalSpeeds.slowSpeed;
@@ -5421,7 +6779,7 @@ class SpeedController {
     return {
       pacmanMultiplier: this.currentMultipliers.pacman,
       ghostMultiplier: this.currentMultipliers.ghost,
-      isModified: this.currentMultipliers.pacman !== 1.0 || this.currentMultipliers.ghost !== 1.0
+      isModified: this.currentMultipliers.pacman !== 1.0 || this.currentMultipliers.ghost !== 1.0,
     };
   }
 
@@ -5430,8 +6788,1042 @@ class SpeedController {
       originalSpeeds: this.originalSpeeds,
       currentMultipliers: this.currentMultipliers,
       isInitialized: this.isInitialized,
-      currentConfig: this.getCurrentConfiguration()
+      currentConfig: this.getCurrentConfiguration(),
     };
+  }
+}
+
+
+class VisualizationDashboard {
+  constructor(experimentManager, sessionManager, exportManager) {
+    this.experimentManager = experimentManager;
+    this.sessionManager = sessionManager;
+    this.exportManager = exportManager;
+    this.charts = {};
+    this.dashboardContainer = null;
+    this.isVisible = false;
+    this.updateInterval = null;
+    this.chartColors = {
+      primary: '#4CAF50',
+      secondary: '#2196F3',
+      accent: '#FF9800',
+      error: '#F44336',
+      success: '#8BC34A',
+      warning: '#FFC107'
+    };
+    this.isInitialized = false;
+    this.DEBUG = true;
+  }
+
+  initialize() {
+    if (this.isInitialized) return;
+    
+    this.createDashboardStructure();
+    this.bindEvents();
+    this.isInitialized = true;
+    
+    if (this.DEBUG) {
+      console.log('[VisualizationDashboard] Initialized');
+    }
+  }
+
+  bindEvents() {
+    window.addEventListener('experimentSessionStarted', () => {
+      this.startRealTimeUpdates();
+    });
+
+    window.addEventListener('experimentSessionEnded', () => {
+      this.updateDashboard();
+    });
+
+    window.addEventListener('experimentComplete', () => {
+      this.generateCompleteDashboard();
+    });
+
+    // Keyboard shortcut to toggle dashboard
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'd') {
+        e.preventDefault();
+        this.toggleDashboard();
+      }
+    });
+  }
+
+  createDashboardStructure() {
+    // Remove existing dashboard
+    const existing = document.getElementById('visualization-dashboard');
+    if (existing) {
+      existing.remove();
+    }
+
+    const dashboardHTML = `
+      <div id="visualization-dashboard" style="
+        position: fixed;
+        top: 0;
+        right: -500px;
+        width: 480px;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.95);
+        color: white;
+        font-family: monospace;
+        font-size: 12px;
+        overflow-y: auto;
+        z-index: 2000;
+        transition: right 0.3s ease;
+        border-left: 2px solid #4CAF50;
+      ">
+        <div style="padding: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h2 style="margin: 0; color: #4CAF50;">Analytics Dashboard</h2>
+            <button id="close-dashboard" style="background: #F44336; border: none; color: white; padding: 5px 10px; border-radius: 3px; cursor: pointer;">×</button>
+          </div>
+          
+          <div id="dashboard-tabs" style="display: flex; margin-bottom: 20px; border-bottom: 1px solid #333;">
+            <button class="dashboard-tab active" data-tab="overview" style="flex: 1; padding: 10px; background: none; border: none; color: white; cursor: pointer;">Overview</button>
+            <button class="dashboard-tab" data-tab="performance" style="flex: 1; padding: 10px; background: none; border: none; color: white; cursor: pointer;">Performance</button>
+            <button class="dashboard-tab" data-tab="analytics" style="flex: 1; padding: 10px; background: none; border: none; color: white; cursor: pointer;">Analytics</button>
+          </div>
+
+          <div id="tab-overview" class="dashboard-content">
+            <div id="experiment-overview"></div>
+            <div id="current-session-chart"></div>
+            <div id="progress-visualization"></div>
+          </div>
+
+          <div id="tab-performance" class="dashboard-content" style="display: none;">
+            <div id="performance-metrics"></div>
+            <div id="speed-comparison-chart"></div>
+            <div id="turn-accuracy-chart"></div>
+          </div>
+
+          <div id="tab-analytics" class="dashboard-content" style="display: none;">
+            <div id="statistical-summary"></div>
+            <div id="correlation-matrix"></div>
+            <div id="trend-analysis"></div>
+          </div>
+
+          <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #333;">
+            <button id="export-dashboard" style="width: 100%; padding: 10px; background: #2196F3; border: none; color: white; border-radius: 3px; cursor: pointer; margin-bottom: 10px;">Export Dashboard</button>
+            <button id="download-charts" style="width: 100%; padding: 10px; background: #FF9800; border: none; color: white; border-radius: 3px; cursor: pointer;">Download Charts</button>
+          </div>
+
+          <div style="margin-top: 10px; font-size: 10px; color: #666; text-align: center;">
+            Press Ctrl+D to toggle dashboard
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', dashboardHTML);
+    this.dashboardContainer = document.getElementById('visualization-dashboard');
+    this.bindDashboardEvents();
+  }
+
+  bindDashboardEvents() {
+    // Close button
+    document.getElementById('close-dashboard').addEventListener('click', () => {
+      this.hideDashboard();
+    });
+
+    // Tab switching
+    document.querySelectorAll('.dashboard-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        this.switchTab(tab.dataset.tab);
+      });
+    });
+
+    // Export buttons
+    document.getElementById('export-dashboard').addEventListener('click', () => {
+      this.exportDashboard();
+    });
+
+    document.getElementById('download-charts').addEventListener('click', () => {
+      this.downloadCharts();
+    });
+  }
+
+  switchTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.dashboard-tab').forEach(tab => {
+      tab.classList.remove('active');
+      if (tab.dataset.tab === tabName) {
+        tab.classList.add('active');
+        tab.style.borderBottom = '2px solid #4CAF50';
+      } else {
+        tab.style.borderBottom = 'none';
+      }
+    });
+
+    // Show/hide content
+    document.querySelectorAll('.dashboard-content').forEach(content => {
+      content.style.display = 'none';
+    });
+    
+    const targetContent = document.getElementById(`tab-${tabName}`);
+    if (targetContent) {
+      targetContent.style.display = 'block';
+      this.updateTabContent(tabName);
+    }
+  }
+
+  updateTabContent(tabName) {
+    switch (tabName) {
+      case 'overview':
+        this.updateOverviewTab();
+        break;
+      case 'performance':
+        this.updatePerformanceTab();
+        break;
+      case 'analytics':
+        this.updateAnalyticsTab();
+        break;
+    }
+  }
+
+  updateOverviewTab() {
+    this.renderExperimentOverview();
+    this.renderCurrentSessionChart();
+    this.renderProgressVisualization();
+  }
+
+  updatePerformanceTab() {
+    this.renderPerformanceMetrics();
+    this.renderSpeedComparisonChart();
+    this.renderTurnAccuracyChart();
+  }
+
+  updateAnalyticsTab() {
+    this.renderStatisticalSummary();
+    this.renderCorrelationMatrix();
+    this.renderTrendAnalysis();
+  }
+
+  renderExperimentOverview() {
+    const container = document.getElementById('experiment-overview');
+    if (!container) return;
+
+    const completedSessions = this.experimentManager.getCompletedSessionsCount();
+    const analytics = this.sessionManager.getSessionAnalytics();
+    const currentSession = this.experimentManager.getCurrentSessionInfo();
+
+    container.innerHTML = `
+      <div style="background: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+        <h3 style="margin: 0 0 10px 0; color: #4CAF50;">Experiment Status</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <div>
+            <div style="color: #ccc;">Progress</div>
+            <div style="font-size: 18px; font-weight: bold;">${completedSessions}/9 Sessions</div>
+          </div>
+          <div>
+            <div style="color: #ccc;">Completion</div>
+            <div style="font-size: 18px; font-weight: bold;">${Math.round((completedSessions / 9) * 100)}%</div>
+          </div>
+          <div>
+            <div style="color: #ccc;">User ID</div>
+            <div style="font-size: 14px;">${this.experimentManager.userId || 'Not set'}</div>
+          </div>
+          <div>
+            <div style="color: #ccc;">Current Session</div>
+            <div style="font-size: 14px;">${currentSession ? currentSession.sessionId : 'None'}</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    if (currentSession) {
+      container.innerHTML += `
+        <div style="background: rgba(33, 150, 243, 0.1); padding: 15px; border-radius: 5px;">
+          <h4 style="margin: 0 0 10px 0; color: #2196F3;">Current Session</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
+              <div style="color: #ccc;">Pac-Man Speed</div>
+              <div style="font-weight: bold;">${currentSession.speedConfig.pacman}</div>
+            </div>
+            <div>
+              <div style="color: #ccc;">Ghost Speed</div>
+              <div style="font-weight: bold;">${currentSession.speedConfig.ghost}</div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  renderCurrentSessionChart() {
+    const container = document.getElementById('current-session-chart');
+    if (!container) return;
+
+    const currentMetrics = this.experimentManager.currentMetrics;
+    if (!currentMetrics) {
+      container.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">No active session</div>';
+      return;
+    }
+
+    const summary = currentMetrics.summary;
+    const maxGhosts = 20; // Reasonable maximum for visualization
+    const maxPellets = 200;
+
+    container.innerHTML = `
+      <div style="background: rgba(255, 152, 0, 0.1); padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+        <h4 style="margin: 0 0 15px 0; color: #FF9800;">Session Metrics</h4>
+        
+        <div style="margin-bottom: 15px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span>Ghosts Eaten</span>
+            <span>${summary.totalGhostsEaten}</span>
+          </div>
+          <div style="background: #333; height: 8px; border-radius: 4px;">
+            <div style="background: #4CAF50; height: 100%; width: ${(summary.totalGhostsEaten / maxGhosts) * 100}%; border-radius: 4px;"></div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span>Pellets Eaten</span>
+            <span>${summary.totalPelletsEaten}</span>
+          </div>
+          <div style="background: #333; height: 8px; border-radius: 4px;">
+            <div style="background: #2196F3; height: 100%; width: ${(summary.totalPelletsEaten / maxPellets) * 100}%; border-radius: 4px;"></div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 15px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span>Turn Accuracy</span>
+            <span>${summary.totalTurns > 0 ? Math.round((summary.successfulTurns / summary.totalTurns) * 100) : 0}%</span>
+          </div>
+          <div style="background: #333; height: 8px; border-radius: 4px;">
+            <div style="background: #FF9800; height: 100%; width: ${summary.totalTurns > 0 ? (summary.successfulTurns / summary.totalTurns) * 100 : 0}%; border-radius: 4px;"></div>
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; text-align: center; margin-top: 15px;">
+          <div>
+            <div style="color: #F44336; font-size: 18px; font-weight: bold;">${summary.totalDeaths}</div>
+            <div style="color: #ccc; font-size: 10px;">Deaths</div>
+          </div>
+          <div>
+            <div style="color: #4CAF50; font-size: 18px; font-weight: bold;">${summary.successfulTurns}</div>
+            <div style="color: #ccc; font-size: 10px;">Good Turns</div>
+          </div>
+          <div>
+            <div style="color: #FF9800; font-size: 18px; font-weight: bold;">${currentMetrics.events.length}</div>
+            <div style="color: #ccc; font-size: 10px;">Events</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  renderProgressVisualization() {
+    const container = document.getElementById('progress-visualization');
+    if (!container) return;
+
+    const sessions = this.experimentManager.metrics;
+    const sessionOrder = this.experimentManager.sessionOrder;
+    const completedSessions = this.experimentManager.getCompletedSessionsCount();
+
+    let progressHTML = `
+      <div style="background: rgba(156, 39, 176, 0.1); padding: 15px; border-radius: 5px;">
+        <h4 style="margin: 0 0 15px 0; color: #9C27B0;">Session Progress</h4>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+    `;
+
+    for (let i = 0; i < 9; i++) {
+      const isCompleted = i < completedSessions;
+      const isCurrent = i === completedSessions && this.experimentManager.isExperimentActive;
+      const permutationId = sessionOrder[i];
+      const config = permutationId !== undefined ? this.experimentManager.PERMUTATIONS[permutationId] : null;
+      
+      let bgColor = '#333';
+      let textColor = '#666';
+      let borderColor = 'transparent';
+      
+      if (isCompleted) {
+        bgColor = '#4CAF50';
+        textColor = 'white';
+      } else if (isCurrent) {
+        bgColor = '#FF9800';
+        textColor = 'white';
+        borderColor = '#FFB74D';
+      }
+
+      progressHTML += `
+        <div style="
+          background: ${bgColor};
+          color: ${textColor};
+          padding: 8px;
+          border-radius: 3px;
+          text-align: center;
+          font-size: 10px;
+          border: 2px solid ${borderColor};
+        ">
+          <div style="font-weight: bold;">S${i + 1}</div>
+          ${config ? `<div>${config.pacman.charAt(0).toUpperCase()}/${config.ghost.charAt(0).toUpperCase()}</div>` : '<div>-/-</div>'}
+        </div>
+      `;
+    }
+
+    progressHTML += `
+        </div>
+        <div style="margin-top: 10px; font-size: 10px; color: #666;">
+          S = Session, P/G = Pac-Man/Ghost Speed (S/N/F = Slow/Normal/Fast)
+        </div>
+      </div>
+    `;
+
+    container.innerHTML = progressHTML;
+  }
+
+  renderPerformanceMetrics() {
+    const container = document.getElementById('performance-metrics');
+    if (!container) return;
+
+    const sessions = this.experimentManager.metrics;
+    if (sessions.length === 0) {
+      container.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">No completed sessions</div>';
+      return;
+    }
+
+    const stats = this.calculateSessionStats(sessions);
+
+    container.innerHTML = `
+      <div style="background: rgba(33, 150, 243, 0.1); padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+        <h4 style="margin: 0 0 15px 0; color: #2196F3;">Performance Overview</h4>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+          <div>
+            <h5 style="margin: 0 0 10px 0; color: #4CAF50;">Ghosts Eaten</h5>
+            <div>Avg: <span style="font-weight: bold;">${stats.ghosts.avg.toFixed(1)}</span></div>
+            <div>Best: <span style="font-weight: bold;">${stats.ghosts.max}</span></div>
+            <div>Total: <span style="font-weight: bold;">${stats.ghosts.total}</span></div>
+          </div>
+          
+          <div>
+            <h5 style="margin: 0 0 10px 0; color: #2196F3;">Pellets Eaten</h5>
+            <div>Avg: <span style="font-weight: bold;">${stats.pellets.avg.toFixed(1)}</span></div>
+            <div>Best: <span style="font-weight: bold;">${stats.pellets.max}</span></div>
+            <div>Total: <span style="font-weight: bold;">${stats.pellets.total}</span></div>
+          </div>
+          
+          <div>
+            <h5 style="margin: 0 0 10px 0; color: #FF9800;">Turn Accuracy</h5>
+            <div>Avg: <span style="font-weight: bold;">${(stats.accuracy.avg * 100).toFixed(1)}%</span></div>
+            <div>Best: <span style="font-weight: bold;">${(stats.accuracy.max * 100).toFixed(1)}%</span></div>
+            <div>Worst: <span style="font-weight: bold;">${(stats.accuracy.min * 100).toFixed(1)}%</span></div>
+          </div>
+          
+          <div>
+            <h5 style="margin: 0 0 10px 0; color: #F44336;">Deaths</h5>
+            <div>Avg: <span style="font-weight: bold;">${stats.deaths.avg.toFixed(1)}</span></div>
+            <div>Most: <span style="font-weight: bold;">${stats.deaths.max}</span></div>
+            <div>Total: <span style="font-weight: bold;">${stats.deaths.total}</span></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  renderSpeedComparisonChart() {
+    const container = document.getElementById('speed-comparison-chart');
+    if (!container) return;
+
+    const sessions = this.experimentManager.metrics;
+    const speedAnalysis = this.analyzeSpeedEffects(sessions);
+
+    if (!speedAnalysis || Object.keys(speedAnalysis.pacman).length === 0) {
+      container.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Insufficient data for speed analysis</div>';
+      return;
+    }
+
+    container.innerHTML = `
+      <div style="background: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+        <h4 style="margin: 0 0 15px 0; color: #4CAF50;">Speed Configuration Effects</h4>
+        
+        <div style="margin-bottom: 20px;">
+          <h5 style="margin: 0 0 10px 0;">Pac-Man Speed Impact</h5>
+          ${this.renderSpeedBars('pacman', speedAnalysis.pacman)}
+        </div>
+        
+        <div>
+          <h5 style="margin: 0 0 10px 0;">Ghost Speed Impact</h5>
+          ${this.renderSpeedBars('ghost', speedAnalysis.ghost)}
+        </div>
+      </div>
+    `;
+  }
+
+  renderSpeedBars(entityType, data) {
+    const speeds = ['slow', 'normal', 'fast'];
+    const maxValue = Math.max(...speeds.map(speed => data[speed]?.avgGhostsEaten || 0));
+    
+    return speeds.map(speed => {
+      const speedData = data[speed];
+      if (!speedData) return '';
+      
+      const value = speedData.avgGhostsEaten;
+      const percentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
+      
+      return `
+        <div style="margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+            <span style="text-transform: capitalize;">${speed}</span>
+            <span style="font-weight: bold;">${value.toFixed(1)}</span>
+          </div>
+          <div style="background: #333; height: 6px; border-radius: 3px;">
+            <div style="background: ${this.getSpeedColor(speed)}; height: 100%; width: ${percentage}%; border-radius: 3px;"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  getSpeedColor(speed) {
+    switch (speed) {
+      case 'slow': return '#4CAF50';
+      case 'normal': return '#FF9800';
+      case 'fast': return '#F44336';
+      default: return '#666';
+    }
+  }
+
+  renderTurnAccuracyChart() {
+    const container = document.getElementById('turn-accuracy-chart');
+    if (!container) return;
+
+    const sessions = this.experimentManager.metrics;
+    if (sessions.length === 0) {
+      container.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">No session data available</div>';
+      return;
+    }
+
+    const accuracyData = sessions.map((session, index) => ({
+      session: index + 1,
+      accuracy: session.summary && session.summary.totalTurns > 0 
+        ? session.summary.successfulTurns / session.summary.totalTurns 
+        : 0,
+      config: session.speedConfig
+    }));
+
+    const maxAccuracy = Math.max(...accuracyData.map(d => d.accuracy));
+
+    container.innerHTML = `
+      <div style="background: rgba(255, 152, 0, 0.1); padding: 15px; border-radius: 5px;">
+        <h4 style="margin: 0 0 15px 0; color: #FF9800;">Turn Accuracy by Session</h4>
+        <div style="height: 120px; display: flex; align-items: end; justify-content: space-between; padding: 10px 0;">
+          ${accuracyData.map(data => `
+            <div style="flex: 1; margin: 0 2px; display: flex; flex-direction: column; align-items: center;">
+              <div style="
+                background: ${this.getAccuracyColor(data.accuracy)};
+                width: 100%;
+                height: ${(data.accuracy / (maxAccuracy || 1)) * 100}px;
+                min-height: 2px;
+                border-radius: 2px 2px 0 0;
+              "></div>
+              <div style="font-size: 9px; margin-top: 4px; text-align: center;">
+                S${data.session}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <div style="font-size: 10px; color: #666; text-align: center;">
+          Session accuracy: ${(accuracyData.reduce((sum, d) => sum + d.accuracy, 0) / accuracyData.length * 100).toFixed(1)}% average
+        </div>
+      </div>
+    `;
+  }
+
+  getAccuracyColor(accuracy) {
+    if (accuracy >= 0.8) return '#4CAF50';
+    if (accuracy >= 0.6) return '#FF9800';
+    return '#F44336';
+  }
+
+  renderStatisticalSummary() {
+    const container = document.getElementById('statistical-summary');
+    if (!container) return;
+
+    const sessions = this.experimentManager.metrics;
+    if (sessions.length === 0) {
+      container.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">No statistical data available</div>';
+      return;
+    }
+
+    const stats = this.calculateAdvancedStats(sessions);
+
+    container.innerHTML = `
+      <div style="background: rgba(156, 39, 176, 0.1); padding: 15px; border-radius: 5px; margin-bottom: 15px;">
+        <h4 style="margin: 0 0 15px 0; color: #9C27B0;">Statistical Summary</h4>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+          <div>
+            <h5 style="margin: 0 0 8px 0; color: #ccc;">Performance Metrics</h5>
+            <div style="font-size: 11px;">
+              <div>Ghosts: μ=${stats.ghosts.mean.toFixed(1)}, σ=${stats.ghosts.std.toFixed(1)}</div>
+              <div>Pellets: μ=${stats.pellets.mean.toFixed(1)}, σ=${stats.pellets.std.toFixed(1)}</div>
+              <div>Accuracy: μ=${(stats.accuracy.mean * 100).toFixed(1)}%, σ=${(stats.accuracy.std * 100).toFixed(1)}%</div>
+            </div>
+          </div>
+          
+          <div>
+            <h5 style="margin: 0 0 8px 0; color: #ccc;">Data Quality</h5>
+            <div style="font-size: 11px;">
+              <div>Sessions: ${sessions.length}/9</div>
+              <div>Completeness: ${(sessions.length / 9 * 100).toFixed(1)}%</div>
+              <div>Data Points: ${sessions.reduce((sum, s) => sum + (s.events?.length || 0), 0)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 15px;">
+          <h5 style="margin: 0 0 8px 0; color: #ccc;">Speed Configuration Distribution</h5>
+          <div style="font-size: 11px;">
+            ${this.renderConfigDistribution(sessions)}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  renderConfigDistribution(sessions) {
+    const configCounts = {};
+    sessions.forEach(session => {
+      if (session.speedConfig) {
+        const key = `${session.speedConfig.pacman}-${session.speedConfig.ghost}`;
+        configCounts[key] = (configCounts[key] || 0) + 1;
+      }
+    });
+
+    return Object.entries(configCounts)
+      .map(([config, count]) => `<div>${config}: ${count} session(s)</div>`)
+      .join('');
+  }
+
+  renderCorrelationMatrix() {
+    const container = document.getElementById('correlation-matrix');
+    if (!container) return;
+
+    const sessions = this.experimentManager.metrics;
+    if (sessions.length < 3) {
+      container.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Need more sessions for correlation analysis</div>';
+      return;
+    }
+
+    const correlations = this.calculateCorrelations(sessions);
+
+    container.innerHTML = `
+      <div style="background: rgba(33, 150, 243, 0.1); padding: 15px; border-radius: 5px;">
+        <h4 style="margin: 0 0 15px 0; color: #2196F3;">Correlation Analysis</h4>
+        <div style="font-size: 11px;">
+          <div style="margin-bottom: 8px;">
+            <strong>Strong correlations found:</strong>
+          </div>
+          ${this.renderCorrelationList(correlations)}
+        </div>
+        <div style="margin-top: 10px; font-size: 10px; color: #666;">
+          Correlation strength: |r| > 0.7 (strong), 0.5-0.7 (moderate), < 0.5 (weak)
+        </div>
+      </div>
+    `;
+  }
+
+  renderCorrelationList(correlations) {
+    return correlations
+      .filter(corr => Math.abs(corr.value) > 0.5)
+      .map(corr => `
+        <div style="margin-bottom: 5px;">
+          ${corr.var1} ↔ ${corr.var2}: 
+          <span style="color: ${corr.value > 0 ? '#4CAF50' : '#F44336'}; font-weight: bold;">
+            ${corr.value.toFixed(3)}
+          </span>
+          (${Math.abs(corr.value) > 0.7 ? 'strong' : 'moderate'})
+        </div>
+      `)
+      .join('') || '<div style="color: #666;">No strong correlations detected</div>';
+  }
+
+  renderTrendAnalysis() {
+    const container = document.getElementById('trend-analysis');
+    if (!container) return;
+
+    const sessions = this.experimentManager.metrics;
+    if (sessions.length < 3) {
+      container.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">Need more sessions for trend analysis</div>';
+      return;
+    }
+
+    const trends = this.calculateTrends(sessions);
+
+    container.innerHTML = `
+      <div style="background: rgba(76, 175, 80, 0.1); padding: 15px; border-radius: 5px;">
+        <h4 style="margin: 0 0 15px 0; color: #4CAF50;">Performance Trends</h4>
+        <div style="font-size: 11px;">
+          ${this.renderTrendList(trends)}
+        </div>
+        <div style="margin-top: 10px; font-size: 10px; color: #666;">
+          Trends calculated using linear regression over session order
+        </div>
+      </div>
+    `;
+  }
+
+  renderTrendList(trends) {
+    return Object.entries(trends)
+      .map(([metric, trend]) => `
+        <div style="margin-bottom: 8px; display: flex; justify-content: space-between;">
+          <span style="text-transform: capitalize;">${metric.replace(/([A-Z])/g, ' $1')}</span>
+          <span style="color: ${trend.slope > 0 ? '#4CAF50' : '#F44336'};">
+            ${trend.slope > 0 ? '↗' : '↘'} ${Math.abs(trend.slope).toFixed(3)}/session
+          </span>
+        </div>
+      `)
+      .join('');
+  }
+
+  // Statistical calculation methods
+  calculateSessionStats(sessions) {
+    const getValues = (field) => sessions
+      .filter(s => s.summary && s.summary[field] !== undefined)
+      .map(s => s.summary[field]);
+
+    const accuracyValues = sessions
+      .filter(s => s.summary && s.summary.totalTurns > 0)
+      .map(s => s.summary.successfulTurns / s.summary.totalTurns);
+
+    return {
+      ghosts: this.getStatSummary(getValues('totalGhostsEaten')),
+      pellets: this.getStatSummary(getValues('totalPelletsEaten')),
+      deaths: this.getStatSummary(getValues('totalDeaths')),
+      accuracy: this.getStatSummary(accuracyValues)
+    };
+  }
+
+  getStatSummary(values) {
+    if (values.length === 0) return { avg: 0, max: 0, min: 0, total: 0 };
+    
+    return {
+      avg: values.reduce((sum, val) => sum + val, 0) / values.length,
+      max: Math.max(...values),
+      min: Math.min(...values),
+      total: values.reduce((sum, val) => sum + val, 0)
+    };
+  }
+
+  calculateAdvancedStats(sessions) {
+    const getValues = (field) => sessions
+      .filter(s => s.summary && s.summary[field] !== undefined)
+      .map(s => s.summary[field]);
+
+    const accuracyValues = sessions
+      .filter(s => s.summary && s.summary.totalTurns > 0)
+      .map(s => s.summary.successfulTurns / s.summary.totalTurns);
+
+    return {
+      ghosts: this.calculateMeanStd(getValues('totalGhostsEaten')),
+      pellets: this.calculateMeanStd(getValues('totalPelletsEaten')),
+      accuracy: this.calculateMeanStd(accuracyValues)
+    };
+  }
+
+  calculateMeanStd(values) {
+    if (values.length === 0) return { mean: 0, std: 0 };
+    
+    const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
+    const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
+    
+    return {
+      mean,
+      std: Math.sqrt(variance)
+    };
+  }
+
+  analyzeSpeedEffects(sessions) {
+    const speedGroups = {
+      pacman: { slow: [], normal: [], fast: [] },
+      ghost: { slow: [], normal: [], fast: [] }
+    };
+
+    sessions.forEach(session => {
+      if (session.speedConfig && session.summary) {
+        speedGroups.pacman[session.speedConfig.pacman].push(session.summary);
+        speedGroups.ghost[session.speedConfig.ghost].push(session.summary);
+      }
+    });
+
+    const analysis = {};
+
+    ['pacman', 'ghost'].forEach(entityType => {
+      analysis[entityType] = {};
+      
+      ['slow', 'normal', 'fast'].forEach(speed => {
+        const group = speedGroups[entityType][speed];
+        if (group.length > 0) {
+          analysis[entityType][speed] = {
+            sessionCount: group.length,
+            avgGhostsEaten: group.reduce((sum, s) => sum + (s.totalGhostsEaten || 0), 0) / group.length,
+            avgPelletsEaten: group.reduce((sum, s) => sum + (s.totalPelletsEaten || 0), 0) / group.length,
+            avgDeaths: group.reduce((sum, s) => sum + (s.totalDeaths || 0), 0) / group.length,
+            avgTurnAccuracy: group.reduce((sum, s) => 
+              sum + (s.totalTurns > 0 ? s.successfulTurns / s.totalTurns : 0), 0
+            ) / group.length
+          };
+        }
+      });
+    });
+
+    return analysis;
+  }
+
+  calculateCorrelations(sessions) {
+    const variables = ['totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths'];
+    const correlations = [];
+
+    for (let i = 0; i < variables.length; i++) {
+      for (let j = i + 1; j < variables.length; j++) {
+        const var1 = variables[i];
+        const var2 = variables[j];
+        
+        const values1 = sessions
+          .filter(s => s.summary && s.summary[var1] !== undefined)
+          .map(s => s.summary[var1]);
+        const values2 = sessions
+          .filter(s => s.summary && s.summary[var2] !== undefined)
+          .map(s => s.summary[var2]);
+
+        if (values1.length === values2.length && values1.length > 2) {
+          const correlation = this.pearsonCorrelation(values1, values2);
+          correlations.push({
+            var1: var1.replace(/total/g, '').toLowerCase(),
+            var2: var2.replace(/total/g, '').toLowerCase(),
+            value: correlation
+          });
+        }
+      }
+    }
+
+    return correlations;
+  }
+
+  pearsonCorrelation(x, y) {
+    const n = x.length;
+    if (n === 0) return 0;
+
+    const sumX = x.reduce((sum, val) => sum + val, 0);
+    const sumY = y.reduce((sum, val) => sum + val, 0);
+    const sumXY = x.reduce((sum, val, i) => sum + val * y[i], 0);
+    const sumXX = x.reduce((sum, val) => sum + val * val, 0);
+    const sumYY = y.reduce((sum, val) => sum + val * val, 0);
+
+    const numerator = n * sumXY - sumX * sumY;
+    const denominator = Math.sqrt((n * sumXX - sumX * sumX) * (n * sumYY - sumY * sumY));
+
+    return denominator === 0 ? 0 : numerator / denominator;
+  }
+
+  calculateTrends(sessions) {
+    const variables = ['totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths'];
+    const trends = {};
+
+    variables.forEach(variable => {
+      const values = sessions
+        .filter(s => s.summary && s.summary[variable] !== undefined)
+        .map((s, index) => ({ x: index + 1, y: s.summary[variable] }));
+
+      if (values.length > 2) {
+        trends[variable] = this.linearRegression(values);
+      }
+    });
+
+    return trends;
+  }
+
+  linearRegression(points) {
+    const n = points.length;
+    const sumX = points.reduce((sum, p) => sum + p.x, 0);
+    const sumY = points.reduce((sum, p) => sum + p.y, 0);
+    const sumXY = points.reduce((sum, p) => sum + p.x * p.y, 0);
+    const sumXX = points.reduce((sum, p) => sum + p.x * p.x, 0);
+
+    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+
+    return { slope, intercept };
+  }
+
+  toggleDashboard() {
+    if (this.isVisible) {
+      this.hideDashboard();
+    } else {
+      this.showDashboard();
+    }
+  }
+
+  showDashboard() {
+    if (this.dashboardContainer) {
+      this.dashboardContainer.style.right = '0px';
+      this.isVisible = true;
+      this.updateDashboard();
+      
+      if (this.DEBUG) {
+        console.log('[VisualizationDashboard] Dashboard shown');
+      }
+    }
+  }
+
+  hideDashboard() {
+    if (this.dashboardContainer) {
+      this.dashboardContainer.style.right = '-500px';
+      this.isVisible = false;
+      
+      if (this.DEBUG) {
+        console.log('[VisualizationDashboard] Dashboard hidden');
+      }
+    }
+  }
+
+  updateDashboard() {
+    if (!this.isVisible) return;
+    
+    const activeTab = document.querySelector('.dashboard-tab.active');
+    if (activeTab) {
+      this.updateTabContent(activeTab.dataset.tab);
+    }
+  }
+
+  startRealTimeUpdates() {
+    if (this.updateInterval) {
+      clearInterval(this.updateInterval);
+    }
+
+    this.updateInterval = setInterval(() => {
+      if (this.isVisible && this.experimentManager.isExperimentActive) {
+        this.updateDashboard();
+      }
+    }, 5000); // Update every 5 seconds during active session
+  }
+
+  stopRealTimeUpdates() {
+    if (this.updateInterval) {
+      clearInterval(this.updateInterval);
+      this.updateInterval = null;
+    }
+  }
+
+  generateCompleteDashboard() {
+    // Show dashboard with complete experiment analysis
+    this.showDashboard();
+    this.updateDashboard();
+    
+    // Switch to analytics tab for completion
+    this.switchTab('analytics');
+  }
+
+  exportDashboard() {
+    const dashboardData = {
+      timestamp: new Date().toISOString(),
+      userId: this.experimentManager.userId,
+      dashboardSnapshot: {
+        overview: this.getDashboardSnapshot('overview'),
+        performance: this.getDashboardSnapshot('performance'),
+        analytics: this.getDashboardSnapshot('analytics')
+      }
+    };
+
+    const content = JSON.stringify(dashboardData, null, 2);
+    const filename = `dashboard_${this.experimentManager.userId}_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    
+    this.downloadFile(filename, content, 'application/json');
+  }
+
+  getDashboardSnapshot(tabName) {
+    // Capture current dashboard state for each tab
+    return {
+      tabName,
+      lastUpdated: new Date().toISOString(),
+      data: this.gatherTabData(tabName)
+    };
+  }
+
+  gatherTabData(tabName) {
+    switch (tabName) {
+      case 'overview':
+        return {
+          experimentStatus: {
+            completedSessions: this.experimentManager.getCompletedSessionsCount(),
+            currentSession: this.experimentManager.getCurrentSessionInfo()
+          },
+          sessionProgress: this.experimentManager.sessionOrder
+        };
+      case 'performance':
+        return {
+          sessionStats: this.calculateSessionStats(this.experimentManager.metrics),
+          speedAnalysis: this.analyzeSpeedEffects(this.experimentManager.metrics)
+        };
+      case 'analytics':
+        return {
+          statisticalSummary: this.calculateAdvancedStats(this.experimentManager.metrics),
+          correlations: this.calculateCorrelations(this.experimentManager.metrics),
+          trends: this.calculateTrends(this.experimentManager.metrics)
+        };
+      default:
+        return {};
+    }
+  }
+
+  downloadCharts() {
+    // Generate chart images (simplified as text-based for this implementation)
+    const chartData = this.generateChartExport();
+    const content = JSON.stringify(chartData, null, 2);
+    const filename = `charts_${this.experimentManager.userId}_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    
+    this.downloadFile(filename, content, 'application/json');
+  }
+
+  generateChartExport() {
+    return {
+      sessionProgress: this.experimentManager.sessionOrder,
+      performanceMetrics: this.calculateSessionStats(this.experimentManager.metrics),
+      speedComparison: this.analyzeSpeedEffects(this.experimentManager.metrics),
+      turnAccuracy: this.experimentManager.metrics.map(s => ({
+        session: s.sessionId,
+        accuracy: s.summary?.totalTurns > 0 ? s.summary.successfulTurns / s.summary.totalTurns : 0
+      }))
+    };
+  }
+
+  downloadFile(filename, content, mimeType = 'text/plain') {
+    const blob = new Blob([content], { type: mimeType });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }
+
+  getDebugInfo() {
+    return {
+      isInitialized: this.isInitialized,
+      isVisible: this.isVisible,
+      chartsActive: Object.keys(this.charts).length,
+      updateInterval: this.updateInterval !== null,
+      dashboardContainer: this.dashboardContainer !== null
+    };
+  }
+
+  destroy() {
+    this.stopRealTimeUpdates();
+    
+    if (this.dashboardContainer) {
+      this.dashboardContainer.remove();
+      this.dashboardContainer = null;
+    }
+    
+    this.charts = {};
+    this.isVisible = false;
+    this.isInitialized = false;
   }
 }
 

@@ -10,7 +10,7 @@ class ExperimentUI {
 
   initialize() {
     if (this.isInitialized) return;
-    
+
     this.createExperimentInterface();
     this.bindEvents();
     this.isInitialized = true;
@@ -19,7 +19,7 @@ class ExperimentUI {
   createExperimentInterface() {
     // Skip DOM operations in test environment
     if (typeof document === 'undefined') return;
-    
+
     const existingInterface = document.getElementById('experiment-interface');
     if (existingInterface) {
       existingInterface.remove();
@@ -65,14 +65,14 @@ class ExperimentUI {
   showUserIdPrompt() {
     // Show login section, hide others
     this.showSection('experiment-login');
-    
+
     // Clear and focus input field
     const userIdInput = document.getElementById('user-id-input');
     if (userIdInput) {
       userIdInput.value = '';
       userIdInput.focus();
     }
-    
+
     // Clear any error messages
     const errorDiv = document.getElementById('login-error');
     if (errorDiv) {
@@ -92,7 +92,7 @@ class ExperimentUI {
 
   bindEvents() {
     if (this.isTestEnvironment) return;
-    
+
     const startBtn = document.getElementById('start-experiment-btn');
     const endBtn = document.getElementById('end-session-btn');
     const exportBtn = document.getElementById('export-data-btn');
@@ -139,7 +139,7 @@ class ExperimentUI {
   handleStartExperiment() {
     const userIdInput = document.getElementById('user-id-input');
     const errorDiv = document.getElementById('login-error');
-    
+
     try {
       const userId = userIdInput.value.trim();
       if (!userId) {
@@ -147,7 +147,7 @@ class ExperimentUI {
       }
 
       this.experimentManager.initializeUser(userId);
-      
+
       const completedSessions = this.experimentManager.getCompletedSessionsCount();
       if (completedSessions >= 9) {
         this.showCompleteInterface();
@@ -157,17 +157,16 @@ class ExperimentUI {
       this.experimentManager.startSession();
       this.showSessionInterface();
       this.updateSessionDisplay();
-      
+
       if (errorDiv) {
         errorDiv.style.display = 'none';
       }
 
       window.dispatchEvent(new window.CustomEvent('experimentSessionStarted', {
-        detail: this.experimentManager.getCurrentSessionInfo()
+        detail: this.experimentManager.getCurrentSessionInfo(),
       }));
 
       this.startMetricsDisplay();
-
     } catch (error) {
       if (errorDiv) {
         errorDiv.textContent = error.message;
@@ -179,7 +178,7 @@ class ExperimentUI {
   handleEndSession() {
     try {
       this.experimentManager.endSession();
-      
+
       const completedSessions = this.experimentManager.getCompletedSessionsCount();
       if (completedSessions >= 9) {
         this.showCompleteInterface();
@@ -188,9 +187,8 @@ class ExperimentUI {
       }
 
       window.dispatchEvent(new window.CustomEvent('experimentSessionEnded'));
-      
-      this.stopMetricsDisplay();
 
+      this.stopMetricsDisplay();
     } catch (error) {
       console.error('Error ending session:', error);
     }
@@ -200,10 +198,9 @@ class ExperimentUI {
     try {
       const jsonData = this.experimentManager.exportData('json');
       const csvData = this.experimentManager.exportData('csv');
-      
+
       this.downloadFile(`experiment_${this.experimentManager.userId}_data.json`, jsonData);
       this.downloadFile(`experiment_${this.experimentManager.userId}_data.csv`, csvData);
-      
     } catch (error) {
       console.error('Error exporting data:', error);
     }
@@ -225,7 +222,7 @@ class ExperimentUI {
       console.log(`[TEST] Would download file: ${filename}`);
       return;
     }
-    
+
     const blob = new Blob([content], { type: 'text/plain' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -239,7 +236,7 @@ class ExperimentUI {
 
   showLoginInterface() {
     if (this.isTestEnvironment) return;
-    
+
     this.hideAllInterfaces();
     const loginDiv = document.getElementById('experiment-login');
     if (loginDiv) {
@@ -249,7 +246,7 @@ class ExperimentUI {
 
   showSessionInterface() {
     if (this.isTestEnvironment) return;
-    
+
     this.hideAllInterfaces();
     const sessionDiv = document.getElementById('experiment-session');
     if (sessionDiv) {
@@ -259,7 +256,7 @@ class ExperimentUI {
 
   showCompleteInterface() {
     if (this.isTestEnvironment) return;
-    
+
     this.hideAllInterfaces();
     const completeDiv = document.getElementById('experiment-complete');
     if (completeDiv) {
@@ -269,9 +266,9 @@ class ExperimentUI {
 
   hideAllInterfaces() {
     if (this.isTestEnvironment) return;
-    
+
     const interfaces = ['experiment-login', 'experiment-session', 'experiment-complete'];
-    interfaces.forEach(id => {
+    interfaces.forEach((id) => {
       const element = document.getElementById(id);
       if (element) {
         element.style.display = 'none';
@@ -281,7 +278,7 @@ class ExperimentUI {
 
   updateSessionDisplay() {
     if (this.isTestEnvironment) return;
-    
+
     const sessionInfo = this.experimentManager.getCurrentSessionInfo();
     if (!sessionInfo) return;
 
@@ -317,7 +314,7 @@ class ExperimentUI {
 
   startMetricsDisplay() {
     if (this.isTestEnvironment) return;
-    
+
     if (this.metricsUpdateInterval) {
       clearInterval(this.metricsUpdateInterval);
     }
@@ -336,7 +333,7 @@ class ExperimentUI {
 
   updateMetricsDisplay() {
     if (this.isTestEnvironment) return;
-    
+
     const metricsDiv = document.getElementById('metrics-display');
     if (!metricsDiv) return;
 
@@ -362,11 +359,11 @@ class ExperimentUI {
       if (!this.isTestEnvironment && window.gameCoordinator && window.gameCoordinator.metricsCollector) {
         return window.gameCoordinator.metricsCollector.getCurrentMetrics();
       }
-      
+
       if (this.metricsCollector) {
         return this.metricsCollector.getCurrentMetrics();
       }
-      
+
       return null;
     } catch (error) {
       if (this.DEBUG) {
@@ -382,7 +379,7 @@ class ExperimentUI {
 
   updateDebugDisplay() {
     if (this.isTestEnvironment) return;
-    
+
     const debugInfoDiv = document.getElementById('debug-info');
     if (!debugInfoDiv) return;
 
@@ -397,7 +394,7 @@ class ExperimentUI {
 
   toggleDebugDetails() {
     if (this.isTestEnvironment) return;
-    
+
     const debugInfoDiv = document.getElementById('debug-info');
     if (!debugInfoDiv) return;
 
@@ -420,7 +417,7 @@ class ExperimentUI {
 
   logMetric(type, data = {}) {
     this.experimentManager.logEvent(type, data);
-    
+
     if (this.DEBUG) {
       console.log('[METRICS]', type, data);
     }

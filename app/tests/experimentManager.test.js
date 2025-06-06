@@ -8,18 +8,18 @@ describe('ExperimentManager', () => {
 
   beforeEach(() => {
     experimentManager = new ExperimentManager();
-    
+
     localStorageStub = {
       getItem: sinon.stub(),
       setItem: sinon.stub(),
-      removeItem: sinon.stub()
+      removeItem: sinon.stub(),
     };
-    
+
     global.localStorage = localStorageStub;
     global.window = {
-      dispatchEvent: sinon.stub()
+      dispatchEvent: sinon.stub(),
     };
-    global.CustomEvent = function(type, options) {
+    global.CustomEvent = function (type, options) {
       this.type = type;
       this.detail = options && options.detail;
     };
@@ -32,14 +32,14 @@ describe('ExperimentManager', () => {
   describe('constructor', () => {
     it('should initialize with correct speed configurations', () => {
       assert.deepStrictEqual(experimentManager.SPEED_CONFIGS.pacman, {
-        slow: 0.5,
+        slow: 0.3,
         normal: 1.0,
-        fast: 1.5
+        fast: 2.5,
       });
       assert.deepStrictEqual(experimentManager.SPEED_CONFIGS.ghost, {
-        slow: 0.5,
+        slow: 0.2,
         normal: 1.0,
-        fast: 1.5
+        fast: 3.0,
       });
     });
 
@@ -68,9 +68,9 @@ describe('ExperimentManager', () => {
         { id: 5, pacman: 'normal', ghost: 'fast' },
         { id: 6, pacman: 'fast', ghost: 'slow' },
         { id: 7, pacman: 'fast', ghost: 'normal' },
-        { id: 8, pacman: 'fast', ghost: 'fast' }
+        { id: 8, pacman: 'fast', ghost: 'fast' },
       ];
-      
+
       assert.deepStrictEqual(permutations, expectedCombinations);
     });
   });
@@ -91,7 +91,7 @@ describe('ExperimentManager', () => {
     it('should set user ID and load data', () => {
       localStorageStub.getItem.returns(null);
       experimentManager.initializeUser('test123');
-      
+
       assert.strictEqual(experimentManager.userId, 'test123');
       assert.strictEqual(experimentManager.sessionOrder.length, 9);
     });
@@ -99,12 +99,12 @@ describe('ExperimentManager', () => {
     it('should load existing user data if available', () => {
       const userData = {
         sessionOrder: [1, 2, 3, 4, 5, 6, 7, 8, 0],
-        metrics: [{ sessionId: 1 }]
+        metrics: [{ sessionId: 1 }],
       };
       localStorageStub.getItem.returns(JSON.stringify(userData));
-      
+
       experimentManager.initializeUser('test123');
-      
+
       assert.deepStrictEqual(experimentManager.sessionOrder, userData.sessionOrder);
       assert.deepStrictEqual(experimentManager.metrics, userData.metrics);
     });
@@ -114,7 +114,7 @@ describe('ExperimentManager', () => {
     it('should return array with numbers 0-8', () => {
       const order = experimentManager.generateRandomizedOrder();
       const sorted = [...order].sort((a, b) => a - b);
-      
+
       assert.strictEqual(order.length, 9);
       assert.deepStrictEqual(sorted, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
     });
@@ -124,7 +124,7 @@ describe('ExperimentManager', () => {
       for (let i = 0; i < 10; i++) {
         orders.push(experimentManager.generateRandomizedOrder().join(','));
       }
-      
+
       const uniqueOrders = new Set(orders);
       assert(uniqueOrders.size > 1, 'Should generate different random orders');
     });
@@ -152,7 +152,7 @@ describe('ExperimentManager', () => {
     it('should start first session correctly', () => {
       sinon.stub(Date, 'now').returns(1000);
       const session = experimentManager.startSession();
-      
+
       assert.strictEqual(session.sessionId, 1);
       assert.strictEqual(session.userId, 'test123');
       assert.strictEqual(experimentManager.isExperimentActive, true);
@@ -161,7 +161,7 @@ describe('ExperimentManager', () => {
 
     it('should dispatch speed configuration event', () => {
       experimentManager.startSession();
-      
+
       assert(global.window.dispatchEvent.calledOnce);
       const event = global.window.dispatchEvent.firstCall.args[0];
       assert.strictEqual(event.type, 'speedConfigChanged');
@@ -178,13 +178,13 @@ describe('ExperimentManager', () => {
     it('should not log events when experiment inactive', () => {
       experimentManager.isExperimentActive = false;
       experimentManager.logEvent('test');
-      
+
       assert.strictEqual(experimentManager.currentMetrics.events.length, 0);
     });
 
     it('should log events with correct timing', () => {
       experimentManager.logEvent('ghostEaten', { ghostId: 'blinky' });
-      
+
       const event = experimentManager.currentMetrics.events[0];
       assert.strictEqual(event.type, 'ghostEaten');
       assert.strictEqual(event.time, 1000); // 2000 - 1000 (gameStartTime)
@@ -193,26 +193,26 @@ describe('ExperimentManager', () => {
 
     it('should update summary for ghost eaten events', () => {
       experimentManager.logEvent('ghostEaten');
-      
+
       assert.strictEqual(experimentManager.currentMetrics.summary.totalGhostsEaten, 1);
     });
 
     it('should update summary for pellet eaten events', () => {
       experimentManager.logEvent('pelletEaten');
-      
+
       assert.strictEqual(experimentManager.currentMetrics.summary.totalPelletsEaten, 1);
     });
 
     it('should update summary for death events', () => {
       experimentManager.logEvent('death');
-      
+
       assert.strictEqual(experimentManager.currentMetrics.summary.totalDeaths, 1);
     });
 
     it('should update summary for turn complete events', () => {
       experimentManager.logEvent('turnComplete', { success: true });
       experimentManager.logEvent('turnComplete', { success: false });
-      
+
       assert.strictEqual(experimentManager.currentMetrics.summary.totalTurns, 2);
       assert.strictEqual(experimentManager.currentMetrics.summary.successfulTurns, 1);
     });
@@ -227,13 +227,13 @@ describe('ExperimentManager', () => {
 
     it('should calculate game time correctly', () => {
       experimentManager.endSession();
-      
+
       assert.strictEqual(experimentManager.metrics[0].summary.gameTime, 4000);
     });
 
     it('should reset experiment state', () => {
       experimentManager.endSession();
-      
+
       assert.strictEqual(experimentManager.isExperimentActive, false);
       assert.strictEqual(experimentManager.currentMetrics, null);
       assert.strictEqual(experimentManager.gameStartTime, null);
@@ -242,7 +242,7 @@ describe('ExperimentManager', () => {
 
     it('should save metrics', () => {
       experimentManager.endSession();
-      
+
       assert.strictEqual(experimentManager.metrics.length, 1);
       assert(localStorageStub.setItem.called);
     });
@@ -276,16 +276,16 @@ describe('ExperimentManager', () => {
           totalDeaths: 1,
           successfulTurns: 10,
           totalTurns: 12,
-          gameTime: 30000
+          gameTime: 30000,
         },
-        timestamp: '2023-01-01T00:00:00.000Z'
+        timestamp: '2023-01-01T00:00:00.000Z',
       }];
     });
 
     it('should export JSON format by default', () => {
       const exported = experimentManager.exportData();
       const parsed = JSON.parse(exported);
-      
+
       assert.strictEqual(parsed.userId, 'test123');
       assert.strictEqual(parsed.metrics.length, 1);
       assert.strictEqual(parsed.totalSessions, 1);
@@ -294,7 +294,7 @@ describe('ExperimentManager', () => {
     it('should export CSV format when specified', () => {
       const exported = experimentManager.exportData('csv');
       const lines = exported.split('\n');
-      
+
       assert(lines[0].includes('userId,sessionId,permutationId'));
       assert(lines[1].includes('test123,1,0'));
     });
@@ -304,9 +304,9 @@ describe('ExperimentManager', () => {
     it('should return complete debug information', () => {
       experimentManager.userId = 'test123';
       experimentManager.sessionOrder = [1, 2, 3, 4, 5, 6, 7, 8, 0];
-      
+
       const debugInfo = experimentManager.getDebugInfo();
-      
+
       assert.strictEqual(debugInfo.userId, 'test123');
       assert.strictEqual(debugInfo.completedSessions, 0);
       assert.strictEqual(debugInfo.remainingSessions, 9);

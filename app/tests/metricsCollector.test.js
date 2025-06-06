@@ -12,35 +12,35 @@ describe('MetricsCollector', () => {
   beforeEach(() => {
     mockExperimentManager = {
       isExperimentActive: true,
-      logEvent: sinon.stub()
+      logEvent: sinon.stub(),
     };
 
     mockCharacterUtil = {
-      determineGridPosition: sinon.stub().returns({ x: 13, y: 14 })
+      determineGridPosition: sinon.stub().returns({ x: 13, y: 14 }),
     };
 
     mockPacman = {
       position: { left: 100, top: 200 },
       direction: 'right',
       moving: true,
-      characterUtil: mockCharacterUtil
+      characterUtil: mockCharacterUtil,
     };
 
     mockGameCoordinator = {
       pacman: mockPacman,
-      scaledTileSize: 8
+      scaledTileSize: 8,
     };
 
     global.window = {
-      addEventListener: sinon.stub()
+      addEventListener: sinon.stub(),
     };
     global.console = {
       log: sinon.stub(),
       warn: sinon.stub(),
-      error: sinon.stub()
+      error: sinon.stub(),
     };
     global.Date = {
-      now: sinon.stub().returns(1000)
+      now: sinon.stub().returns(1000),
     };
     global.setInterval = sinon.stub();
 
@@ -64,7 +64,7 @@ describe('MetricsCollector', () => {
   describe('initialize', () => {
     it('should set initialized flag and bind events', () => {
       metricsCollector.initialize(mockGameCoordinator);
-      
+
       assert.strictEqual(metricsCollector.isInitialized, true);
       assert.strictEqual(metricsCollector.gameCoordinator, mockGameCoordinator);
       assert(global.window.addEventListener.called);
@@ -73,9 +73,9 @@ describe('MetricsCollector', () => {
     it('should not initialize twice', () => {
       metricsCollector.initialize(mockGameCoordinator);
       const firstCallCount = global.window.addEventListener.callCount;
-      
+
       metricsCollector.initialize(mockGameCoordinator);
-      
+
       assert.strictEqual(global.window.addEventListener.callCount, firstCallCount);
     });
   });
@@ -93,10 +93,10 @@ describe('MetricsCollector', () => {
         'dotEaten',
         'powerUp',
         'eatGhost',
-        'deathSequence'
+        'deathSequence',
       ];
 
-      expectedEvents.forEach(eventName => {
+      expectedEvents.forEach((eventName) => {
         const eventCall = global.window.addEventListener.getCalls()
           .find(call => call.args[0] === eventName);
         assert(eventCall, `Should bind to ${eventName} event`);
@@ -113,30 +113,30 @@ describe('MetricsCollector', () => {
 
     it('should do nothing if experiment not active', () => {
       mockExperimentManager.isExperimentActive = false;
-      
+
       metricsCollector.updateTurnTracking();
-      
+
       assert(!mockExperimentManager.logEvent.called);
     });
 
     it('should do nothing if pacman not moving', () => {
       mockPacman.moving = false;
-      
+
       metricsCollector.updateTurnTracking();
-      
+
       assert(!mockExperimentManager.logEvent.called);
     });
 
     it('should handle direction change', () => {
       metricsCollector.updateTurnTracking();
-      
+
       assert.strictEqual(metricsCollector.turnTracker.targetDirection, 'right');
       assert.strictEqual(metricsCollector.turnTracker.startDirection, 'left');
     });
 
     it('should update last position and direction', () => {
       metricsCollector.updateTurnTracking();
-      
+
       assert.deepStrictEqual(metricsCollector.lastPosition, { x: 13, y: 14 });
       assert.strictEqual(metricsCollector.lastDirection, 'right');
     });
@@ -151,9 +151,9 @@ describe('MetricsCollector', () => {
       it('should initialize turn tracker', () => {
         const position = { x: 13, y: 14 };
         const direction = 'up';
-        
+
         metricsCollector.startNewTurn(position, direction);
-        
+
         assert(metricsCollector.turnTracker);
         assert.deepStrictEqual(metricsCollector.turnTracker.startPosition, position);
         assert.strictEqual(metricsCollector.turnTracker.targetDirection, direction);
@@ -167,7 +167,7 @@ describe('MetricsCollector', () => {
           startPosition: { x: 13, y: 14 },
           startDirection: 'left',
           targetDirection: 'right',
-          startTime: 500
+          startTime: 500,
         };
         metricsCollector.turnStartTime = 500;
       });
@@ -175,9 +175,9 @@ describe('MetricsCollector', () => {
       it('should complete successful turn', () => {
         const position = { x: 14, y: 14 };
         const actualDirection = 'right';
-        
+
         metricsCollector.completeTurn(position, actualDirection);
-        
+
         assert(mockExperimentManager.logEvent.calledWith('turnComplete'));
         const loggedData = mockExperimentManager.logEvent.firstCall.args[1];
         assert.strictEqual(loggedData.success, true);
@@ -187,9 +187,9 @@ describe('MetricsCollector', () => {
       it('should complete failed turn', () => {
         const position = { x: 14, y: 14 };
         const actualDirection = 'down';
-        
+
         metricsCollector.completeTurn(position, actualDirection);
-        
+
         assert(mockExperimentManager.logEvent.calledWith('turnComplete'));
         const loggedData = mockExperimentManager.logEvent.firstCall.args[1];
         assert.strictEqual(loggedData.success, false);
@@ -198,7 +198,7 @@ describe('MetricsCollector', () => {
 
       it('should reset turn tracker after completion', () => {
         metricsCollector.completeTurn({ x: 14, y: 14 }, 'right');
-        
+
         assert.strictEqual(metricsCollector.turnTracker, null);
       });
     });
@@ -206,7 +206,7 @@ describe('MetricsCollector', () => {
     describe('isTurnSuccessful', () => {
       beforeEach(() => {
         metricsCollector.turnTracker = {
-          targetDirection: 'up'
+          targetDirection: 'up',
         };
       });
 
@@ -236,9 +236,9 @@ describe('MetricsCollector', () => {
     describe('handlePointsEvent', () => {
       it('should log fruit pellet eaten event', () => {
         const detail = { type: 'fruit', points: 100 };
-        
+
         metricsCollector.handlePointsEvent(detail);
-        
+
         assert(mockExperimentManager.logEvent.calledWith('pelletEaten'));
         const loggedData = mockExperimentManager.logEvent.firstCall.args[1];
         assert.strictEqual(loggedData.type, 'fruit');
@@ -247,9 +247,9 @@ describe('MetricsCollector', () => {
 
       it('should not log non-fruit events', () => {
         const detail = { type: 'ghost', points: 200 };
-        
+
         metricsCollector.handlePointsEvent(detail);
-        
+
         assert(!mockExperimentManager.logEvent.called);
       });
     });
@@ -263,21 +263,21 @@ describe('MetricsCollector', () => {
     describe('getCurrentPacmanPosition', () => {
       it('should return current pacman position', () => {
         const position = metricsCollector.getCurrentPacmanPosition();
-        
+
         assert.deepStrictEqual(position, { left: 100, top: 200 });
       });
 
       it('should return null if no game coordinator', () => {
         metricsCollector.gameCoordinator = null;
         const position = metricsCollector.getCurrentPacmanPosition();
-        
+
         assert.strictEqual(position, null);
       });
 
       it('should return null if no pacman', () => {
         metricsCollector.gameCoordinator.pacman = null;
         const position = metricsCollector.getCurrentPacmanPosition();
-        
+
         assert.strictEqual(position, null);
       });
     });
@@ -285,18 +285,18 @@ describe('MetricsCollector', () => {
     describe('getCurrentPacmanGridPosition', () => {
       it('should return grid position from character util', () => {
         const gridPosition = metricsCollector.getCurrentPacmanGridPosition();
-        
+
         assert.deepStrictEqual(gridPosition, { x: 13, y: 14 });
         assert(mockCharacterUtil.determineGridPosition.calledWith(
-          mockPacman.position, 
-          mockGameCoordinator.scaledTileSize
+          mockPacman.position,
+          mockGameCoordinator.scaledTileSize,
         ));
       });
 
       it('should return null if no character util', () => {
         mockPacman.characterUtil = null;
         const gridPosition = metricsCollector.getCurrentPacmanGridPosition();
-        
+
         assert.strictEqual(gridPosition, null);
       });
     });
@@ -317,7 +317,7 @@ describe('MetricsCollector', () => {
 
       it('should reset all turn tracking state', () => {
         metricsCollector.resetTurnTracking();
-        
+
         assert.strictEqual(metricsCollector.turnTracker, null);
         assert.strictEqual(metricsCollector.consecutiveSuccessfulTurns, 0);
         assert.strictEqual(metricsCollector.lastPosition, null);
@@ -328,9 +328,9 @@ describe('MetricsCollector', () => {
     describe('resetMetrics', () => {
       it('should call resetTurnTracking', () => {
         const resetSpy = sinon.spy(metricsCollector, 'resetTurnTracking');
-        
+
         metricsCollector.resetMetrics();
-        
+
         assert(resetSpy.calledOnce);
       });
     });
@@ -346,13 +346,13 @@ describe('MetricsCollector', () => {
           totalPelletsEaten: 50,
           totalDeaths: 1,
           successfulTurns: 10,
-          totalTurns: 12
+          totalTurns: 12,
         },
         events: [
           { type: 'ghostEaten' },
           { type: 'pelletEaten' },
-          { type: 'death' }
-        ]
+          { type: 'death' },
+        ],
       };
     });
 
@@ -360,9 +360,9 @@ describe('MetricsCollector', () => {
       it('should return current metrics with additional data', () => {
         metricsCollector.consecutiveSuccessfulTurns = 3;
         metricsCollector.turnTracker = { test: 'data' };
-        
+
         const metrics = metricsCollector.getCurrentMetrics();
-        
+
         assert.strictEqual(metrics.session, 1);
         assert.strictEqual(metrics.events, 3);
         assert.strictEqual(metrics.consecutiveTurns, 3);
@@ -371,9 +371,9 @@ describe('MetricsCollector', () => {
 
       it('should return null if no current metrics', () => {
         mockExperimentManager.currentMetrics = null;
-        
+
         const metrics = metricsCollector.getCurrentMetrics();
-        
+
         assert.strictEqual(metrics, null);
       });
     });
@@ -381,7 +381,7 @@ describe('MetricsCollector', () => {
     describe('getDetailedMetrics', () => {
       it('should return detailed breakdown of events', () => {
         const metrics = metricsCollector.getDetailedMetrics();
-        
+
         assert.strictEqual(metrics.eventBreakdown.ghostsEaten, 1);
         assert.strictEqual(metrics.eventBreakdown.pelletsEaten, 1);
         assert.strictEqual(metrics.eventBreakdown.deaths, 1);
@@ -398,7 +398,7 @@ describe('MetricsCollector', () => {
     describe('logMetric', () => {
       it('should enrich data with position information', () => {
         metricsCollector.logMetric('test', { custom: 'data' });
-        
+
         assert(mockExperimentManager.logEvent.called);
         const loggedData = mockExperimentManager.logEvent.firstCall.args[1];
         assert.strictEqual(loggedData.custom, 'data');
@@ -409,9 +409,9 @@ describe('MetricsCollector', () => {
 
       it('should warn if no experiment manager', () => {
         metricsCollector.experimentManager = null;
-        
+
         metricsCollector.logMetric('test');
-        
+
         assert(global.console.warn.called);
       });
     });
@@ -425,25 +425,25 @@ describe('MetricsCollector', () => {
     describe('isExperimentActive', () => {
       it('should return true when experiment is active', () => {
         mockExperimentManager.isExperimentActive = true;
-        
+
         const result = metricsCollector.isExperimentActive();
-        
+
         assert.strictEqual(result, true);
       });
 
       it('should return false when experiment is inactive', () => {
         mockExperimentManager.isExperimentActive = false;
-        
+
         const result = metricsCollector.isExperimentActive();
-        
+
         assert.strictEqual(result, false);
       });
 
       it('should return false when no experiment manager', () => {
         metricsCollector.experimentManager = null;
-        
+
         const result = metricsCollector.isExperimentActive();
-        
+
         assert.strictEqual(result, false);
       });
     });
@@ -454,9 +454,9 @@ describe('MetricsCollector', () => {
         metricsCollector.turnTracker = { test: 'data' };
         metricsCollector.lastPosition = { x: 1, y: 1 };
         metricsCollector.lastDirection = 'up';
-        
+
         const debugInfo = metricsCollector.getDebugInfo();
-        
+
         assert.strictEqual(debugInfo.isInitialized, true);
         assert.strictEqual(debugInfo.isExperimentActive, true);
         assert.strictEqual(debugInfo.consecutiveSuccessfulTurns, 3);

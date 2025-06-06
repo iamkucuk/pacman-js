@@ -2,18 +2,18 @@ class SpeedController {
   constructor() {
     this.originalSpeeds = {
       pacman: null,
-      ghosts: {}
+      ghosts: {},
     };
     this.currentMultipliers = {
       pacman: 1.0,
-      ghost: 1.0
+      ghost: 1.0,
     };
     this.isInitialized = false;
   }
 
   initialize(gameCoordinator) {
     if (this.isInitialized) return;
-    
+
     this.gameCoordinator = gameCoordinator;
     this.storeOriginalSpeeds();
     this.bindEvents();
@@ -27,9 +27,9 @@ class SpeedController {
     }
 
     this.originalSpeeds.pacman = this.gameCoordinator.pacman.velocityPerMs;
-    
+
     if (this.gameCoordinator.ghosts) {
-      this.gameCoordinator.ghosts.forEach(ghost => {
+      this.gameCoordinator.ghosts.forEach((ghost) => {
         this.originalSpeeds.ghosts[ghost.name] = {
           slowSpeed: ghost.slowSpeed,
           mediumSpeed: ghost.mediumSpeed,
@@ -37,7 +37,7 @@ class SpeedController {
           scaredSpeed: ghost.scaredSpeed,
           transitionSpeed: ghost.transitionSpeed,
           eyeSpeed: ghost.eyeSpeed,
-          defaultSpeed: ghost.defaultSpeed
+          defaultSpeed: ghost.defaultSpeed,
         };
       });
     }
@@ -57,9 +57,9 @@ class SpeedController {
 
   applySpeedConfiguration(detail) {
     const { pacmanMultiplier, ghostMultiplier, config } = detail;
-    
+
     console.log('[SpeedController] Applying speed config:', config);
-    
+
     this.currentMultipliers.pacman = pacmanMultiplier;
     this.currentMultipliers.ghost = ghostMultiplier;
 
@@ -74,7 +74,7 @@ class SpeedController {
 
     this.applyPacmanSpeed(pacmanMultiplier);
     this.applyGhostSpeeds(ghostMultiplier);
-    
+
     console.log('[SpeedController] Speed configuration applied successfully');
   }
 
@@ -85,7 +85,7 @@ class SpeedController {
 
     const newSpeed = this.originalSpeeds.pacman * multiplier;
     this.gameCoordinator.pacman.velocityPerMs = newSpeed;
-    
+
     console.log(`[SpeedController] Pacman speed: ${this.originalSpeeds.pacman} * ${multiplier} = ${newSpeed}`);
   }
 
@@ -94,7 +94,7 @@ class SpeedController {
       return;
     }
 
-    this.gameCoordinator.ghosts.forEach(ghost => {
+    this.gameCoordinator.ghosts.forEach((ghost) => {
       const originalSpeeds = this.originalSpeeds.ghosts[ghost.name];
       if (!originalSpeeds) {
         console.warn(`[SpeedController] No original speeds found for ghost: ${ghost.name}`);
@@ -107,7 +107,7 @@ class SpeedController {
       ghost.scaredSpeed = originalSpeeds.scaredSpeed * multiplier;
       ghost.transitionSpeed = originalSpeeds.transitionSpeed * multiplier;
       ghost.eyeSpeed = originalSpeeds.eyeSpeed * multiplier;
-      
+
       const currentSpeedType = this.determineCurrentSpeedType(ghost, originalSpeeds);
       ghost.defaultSpeed = originalSpeeds[currentSpeedType] * multiplier;
       ghost.velocityPerMs = ghost.defaultSpeed;
@@ -119,9 +119,9 @@ class SpeedController {
   determineCurrentSpeedType(ghost, originalSpeeds) {
     if (Math.abs(ghost.defaultSpeed - originalSpeeds.slowSpeed) < 0.001) {
       return 'slowSpeed';
-    } else if (Math.abs(ghost.defaultSpeed - originalSpeeds.mediumSpeed) < 0.001) {
+    } if (Math.abs(ghost.defaultSpeed - originalSpeeds.mediumSpeed) < 0.001) {
       return 'mediumSpeed';
-    } else if (Math.abs(ghost.defaultSpeed - originalSpeeds.fastSpeed) < 0.001) {
+    } if (Math.abs(ghost.defaultSpeed - originalSpeeds.fastSpeed) < 0.001) {
       return 'fastSpeed';
     }
     return 'slowSpeed';
@@ -129,7 +129,7 @@ class SpeedController {
 
   resetToOriginalSpeeds() {
     console.log('[SpeedController] Resetting to original speeds');
-    
+
     this.currentMultipliers.pacman = 1.0;
     this.currentMultipliers.ghost = 1.0;
 
@@ -138,7 +138,7 @@ class SpeedController {
     }
 
     if (this.gameCoordinator && this.gameCoordinator.ghosts) {
-      this.gameCoordinator.ghosts.forEach(ghost => {
+      this.gameCoordinator.ghosts.forEach((ghost) => {
         const originalSpeeds = this.originalSpeeds.ghosts[ghost.name];
         if (originalSpeeds) {
           ghost.slowSpeed = originalSpeeds.slowSpeed;
@@ -158,7 +158,7 @@ class SpeedController {
     return {
       pacmanMultiplier: this.currentMultipliers.pacman,
       ghostMultiplier: this.currentMultipliers.ghost,
-      isModified: this.currentMultipliers.pacman !== 1.0 || this.currentMultipliers.ghost !== 1.0
+      isModified: this.currentMultipliers.pacman !== 1.0 || this.currentMultipliers.ghost !== 1.0,
     };
   }
 
@@ -167,7 +167,7 @@ class SpeedController {
       originalSpeeds: this.originalSpeeds,
       currentMultipliers: this.currentMultipliers,
       isInitialized: this.isInitialized,
-      currentConfig: this.getCurrentConfiguration()
+      currentConfig: this.getCurrentConfiguration(),
     };
   }
 }

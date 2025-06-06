@@ -2,14 +2,14 @@ class ExperimentManager {
   constructor() {
     this.SPEED_CONFIGS = {
       pacman: {
-        slow: 0.5,
-        normal: 1.0,
-        fast: 1.5
+        slow: 0.3,    // Very slow - 30% of normal speed
+        normal: 1.0,  // Normal baseline
+        fast: 2.5     // Very fast - 250% of normal speed
       },
       ghost: {
-        slow: 0.5,
-        normal: 1.0,
-        fast: 1.5
+        slow: 0.2,    // Very slow - 20% of normal speed  
+        normal: 1.0,  // Normal baseline
+        fast: 3.0     // Very fast - 300% of normal speed
       }
     };
 

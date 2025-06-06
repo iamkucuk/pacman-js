@@ -12,12 +12,12 @@ class MetricsCollector {
 
   initialize(gameCoordinator) {
     if (this.isInitialized) return;
-    
+
     this.gameCoordinator = gameCoordinator;
     this.bindGameEvents();
     this.initializeTurnTracking();
     this.isInitialized = true;
-    
+
     if (this.DEBUG) {
       console.log('[MetricsCollector] Initialized with game coordinator');
     }
@@ -40,7 +40,7 @@ class MetricsCollector {
       this.logMetric('pelletEaten', {
         type: 'pacdot',
         position: this.getCurrentPacmanPosition(),
-        consecutiveTurns: this.consecutiveSuccessfulTurns
+        consecutiveTurns: this.consecutiveSuccessfulTurns,
       });
     });
 
@@ -48,7 +48,7 @@ class MetricsCollector {
       this.logMetric('pelletEaten', {
         type: 'powerPellet',
         position: this.getCurrentPacmanPosition(),
-        consecutiveTurns: this.consecutiveSuccessfulTurns
+        consecutiveTurns: this.consecutiveSuccessfulTurns,
       });
     });
 
@@ -57,7 +57,7 @@ class MetricsCollector {
         ghostId: e.detail.ghost.name,
         ghostMode: e.detail.ghost.mode,
         position: this.getCurrentPacmanPosition(),
-        consecutiveTurns: this.consecutiveSuccessfulTurns
+        consecutiveTurns: this.consecutiveSuccessfulTurns,
       });
     });
 
@@ -66,9 +66,9 @@ class MetricsCollector {
         cause: 'ghost_collision',
         position: this.getCurrentPacmanPosition(),
         consecutiveTurns: this.consecutiveSuccessfulTurns,
-        turnInProgress: this.turnTracker !== null
+        turnInProgress: this.turnTracker !== null,
       });
-      
+
       this.resetTurnTracking();
     });
   }
@@ -79,7 +79,7 @@ class MetricsCollector {
         type: 'fruit',
         points: detail.points,
         position: this.getCurrentPacmanPosition(),
-        consecutiveTurns: this.consecutiveSuccessfulTurns
+        consecutiveTurns: this.consecutiveSuccessfulTurns,
       });
     }
   }
@@ -98,12 +98,12 @@ class MetricsCollector {
   updateTurnTracking() {
     if (!this.isExperimentActive()) return;
 
-    const pacman = this.gameCoordinator.pacman;
+    const { pacman } = this.gameCoordinator;
     if (!pacman || !pacman.moving) return;
 
     const currentPosition = this.getCurrentPacmanGridPosition();
     const currentDirection = pacman.direction;
-    
+
     if (!currentPosition) return;
 
     if (this.hasDirectionChanged(currentDirection)) {
@@ -122,7 +122,7 @@ class MetricsCollector {
     if (this.turnTracker) {
       this.completeTurn(position, newDirection);
     }
-    
+
     this.startNewTurn(position, newDirection);
   }
 
@@ -132,11 +132,11 @@ class MetricsCollector {
       startDirection: this.lastDirection,
       targetDirection: direction,
       startTime: Date.now(),
-      successful: false
+      successful: false,
     };
-    
+
     this.turnStartTime = Date.now();
-    
+
     if (this.DEBUG) {
       console.log('[MetricsCollector] Turn started:', this.turnTracker);
     }
@@ -147,21 +147,21 @@ class MetricsCollector {
 
     const turnDuration = Date.now() - this.turnStartTime;
     const successful = this.isTurnSuccessful(actualDirection);
-    
+
     this.turnTracker.endPosition = { ...position };
     this.turnTracker.actualDirection = actualDirection;
     this.turnTracker.duration = turnDuration;
     this.turnTracker.successful = successful;
-    
+
     this.logMetric('turnComplete', {
       success: successful,
       startPosition: this.turnTracker.startPosition,
       endPosition: this.turnTracker.endPosition,
       startDirection: this.turnTracker.startDirection,
       targetDirection: this.turnTracker.targetDirection,
-      actualDirection: actualDirection,
+      actualDirection,
       duration: turnDuration,
-      consecutiveTurns: successful ? this.consecutiveSuccessfulTurns + 1 : 0
+      consecutiveTurns: successful ? this.consecutiveSuccessfulTurns + 1 : 0,
     });
 
     if (successful) {
@@ -179,16 +179,16 @@ class MetricsCollector {
 
   isTurnSuccessful(actualDirection) {
     if (!this.turnTracker) return false;
-    
+
     const intended = this.turnTracker.targetDirection;
     const actual = actualDirection;
-    
+
     const success = intended === actual;
-    
+
     if (this.DEBUG && !success) {
       console.log(`[MetricsCollector] Turn failed: intended ${intended}, actual ${actual}`);
     }
-    
+
     return success;
   }
 
@@ -207,7 +207,7 @@ class MetricsCollector {
     this.lastPosition = null;
     this.lastDirection = null;
     this.turnStartTime = null;
-    
+
     if (this.DEBUG) {
       console.log('[MetricsCollector] Turn tracking reset');
     }
@@ -215,7 +215,7 @@ class MetricsCollector {
 
   resetMetrics() {
     this.resetTurnTracking();
-    
+
     if (this.DEBUG) {
       console.log('[MetricsCollector] Metrics reset for new session');
     }
@@ -225,10 +225,10 @@ class MetricsCollector {
     if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
       return null;
     }
-    
+
     return {
       left: this.gameCoordinator.pacman.position.left,
-      top: this.gameCoordinator.pacman.position.top
+      top: this.gameCoordinator.pacman.position.top,
     };
   }
 
@@ -236,15 +236,15 @@ class MetricsCollector {
     if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
       return null;
     }
-    
-    const pacman = this.gameCoordinator.pacman;
+
+    const { pacman } = this.gameCoordinator;
     if (!pacman.characterUtil) {
       return null;
     }
-    
+
     return pacman.characterUtil.determineGridPosition(
-      pacman.position, 
-      this.gameCoordinator.scaledTileSize
+      pacman.position,
+      this.gameCoordinator.scaledTileSize,
     );
   }
 
@@ -264,11 +264,11 @@ class MetricsCollector {
       ...data,
       timestamp: Date.now(),
       pacmanPosition: this.getCurrentPacmanPosition(),
-      pacmanGridPosition: this.getCurrentPacmanGridPosition()
+      pacmanGridPosition: this.getCurrentPacmanGridPosition(),
     };
 
     this.experimentManager.logEvent(type, enrichedData);
-    
+
     if (this.DEBUG) {
       console.log(`[MetricsCollector] Logged metric: ${type}`, enrichedData);
     }
@@ -278,13 +278,13 @@ class MetricsCollector {
     if (!this.experimentManager || !this.experimentManager.currentMetrics) {
       return null;
     }
-    
+
     return {
       session: this.experimentManager.currentMetrics.sessionId,
       summary: this.experimentManager.currentMetrics.summary,
       events: this.experimentManager.currentMetrics.events.length,
       consecutiveTurns: this.consecutiveSuccessfulTurns,
-      turnInProgress: this.turnTracker !== null
+      turnInProgress: this.turnTracker !== null,
     };
   }
 
@@ -292,8 +292,8 @@ class MetricsCollector {
     const metrics = this.getCurrentMetrics();
     if (!metrics) return null;
 
-    const events = this.experimentManager.currentMetrics.events;
-    
+    const { events } = this.experimentManager.currentMetrics;
+
     return {
       ...metrics,
       eventBreakdown: {
@@ -301,10 +301,10 @@ class MetricsCollector {
         pelletsEaten: events.filter(e => e.type === 'pelletEaten').length,
         deaths: events.filter(e => e.type === 'death').length,
         turnsCompleted: events.filter(e => e.type === 'turnComplete').length,
-        successfulTurns: events.filter(e => e.type === 'turnComplete' && e.success).length
+        successfulTurns: events.filter(e => e.type === 'turnComplete' && e.success).length,
       },
       recentEvents: events.slice(-5),
-      turnTracker: this.turnTracker
+      turnTracker: this.turnTracker,
     };
   }
 
@@ -316,7 +316,7 @@ class MetricsCollector {
       turnInProgress: this.turnTracker !== null,
       lastPosition: this.lastPosition,
       lastDirection: this.lastDirection,
-      currentMetrics: this.getCurrentMetrics()
+      currentMetrics: this.getCurrentMetrics(),
     };
   }
 }

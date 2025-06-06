@@ -18,7 +18,7 @@ describe('ExperimentUI', () => {
         sessionId: 1,
         completedSessions: 0,
         totalSessions: 9,
-        speedConfig: { pacman: 'normal', ghost: 'normal' }
+        speedConfig: { pacman: 'normal', ghost: 'normal' },
       }),
       getDebugInfo: sinon.stub().returns({
         userId: 'test123',
@@ -26,11 +26,11 @@ describe('ExperimentUI', () => {
         completedSessions: 0,
         remainingSessions: 9,
         isExperimentActive: true,
-        sessionOrder: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+        sessionOrder: [0, 1, 2, 3, 4, 5, 6, 7, 8],
       }),
       exportData: sinon.stub().returns('{"test": "data"}'),
       logEvent: sinon.stub(),
-      userId: 'test123'
+      userId: 'test123',
     };
 
     mockElement = {
@@ -42,7 +42,7 @@ describe('ExperimentUI', () => {
       innerHTML: '',
       value: '',
       href: '',
-      download: ''
+      download: '',
     };
 
     mockDocument = {
@@ -50,9 +50,9 @@ describe('ExperimentUI', () => {
       body: {
         insertAdjacentHTML: sinon.stub(),
         appendChild: sinon.stub(),
-        removeChild: sinon.stub()
+        removeChild: sinon.stub(),
       },
-      createElement: sinon.stub().returns(mockElement)
+      createElement: sinon.stub().returns(mockElement),
     };
 
     global.document = mockDocument;
@@ -60,23 +60,23 @@ describe('ExperimentUI', () => {
       dispatchEvent: sinon.stub(),
       URL: {
         createObjectURL: sinon.stub().returns('blob:url'),
-        revokeObjectURL: sinon.stub()
+        revokeObjectURL: sinon.stub(),
       },
-      Blob: function(content, options) {
+      Blob(content, options) {
         this.content = content;
         this.type = options.type;
       },
-      CustomEvent: function(type, options) {
+      CustomEvent(type, options) {
         this.type = type;
         this.detail = options && options.detail;
       },
       confirm: sinon.stub().returns(true),
       location: {
-        reload: sinon.stub()
-      }
+        reload: sinon.stub(),
+      },
     };
     global.localStorage = {
-      removeItem: sinon.stub()
+      removeItem: sinon.stub(),
     };
 
     experimentUI = new ExperimentUI(mockExperimentManager);
@@ -103,9 +103,9 @@ describe('ExperimentUI', () => {
     it('should not initialize twice', () => {
       experimentUI.initialize();
       const firstCallCount = mockDocument.body.insertAdjacentHTML.callCount;
-      
+
       experimentUI.initialize();
-      
+
       assert.strictEqual(mockDocument.body.insertAdjacentHTML.callCount, firstCallCount);
     });
   });
@@ -113,7 +113,7 @@ describe('ExperimentUI', () => {
   describe('createExperimentInterface', () => {
     it('should remove existing interface before creating new one', () => {
       experimentUI.createExperimentInterface();
-      
+
       assert(mockElement.remove.called);
       assert(mockDocument.body.insertAdjacentHTML.called);
     });
@@ -121,7 +121,7 @@ describe('ExperimentUI', () => {
     it('should create interface with debug panel when DEBUG is true', () => {
       experimentUI.DEBUG = true;
       experimentUI.createExperimentInterface();
-      
+
       const htmlContent = mockDocument.body.insertAdjacentHTML.firstCall.args[1];
       assert(htmlContent.includes('debug-panel'));
     });
@@ -129,7 +129,7 @@ describe('ExperimentUI', () => {
     it('should create interface without debug panel when DEBUG is false', () => {
       experimentUI.DEBUG = false;
       experimentUI.createExperimentInterface();
-      
+
       const htmlContent = mockDocument.body.insertAdjacentHTML.firstCall.args[1];
       assert(!htmlContent.includes('debug-panel'));
     });
@@ -143,7 +143,7 @@ describe('ExperimentUI', () => {
 
     it('should handle successful experiment start', () => {
       experimentUI.handleStartExperiment();
-      
+
       assert(mockExperimentManager.initializeUser.calledWith('test123'));
       assert(mockExperimentManager.startSession.called);
       assert(global.window.dispatchEvent.called);
@@ -152,21 +152,21 @@ describe('ExperimentUI', () => {
     it('should handle empty user ID', () => {
       mockElement.value = '';
       experimentUI.handleStartExperiment();
-      
+
       assert(!mockExperimentManager.initializeUser.called);
     });
 
     it('should handle completed sessions', () => {
       mockExperimentManager.getCompletedSessionsCount.returns(9);
       experimentUI.handleStartExperiment();
-      
+
       assert(!mockExperimentManager.startSession.called);
     });
 
     it('should handle initialization errors', () => {
       mockExperimentManager.initializeUser.throws(new Error('Test error'));
       experimentUI.handleStartExperiment();
-      
+
       assert(!mockExperimentManager.startSession.called);
     });
   });
@@ -175,7 +175,7 @@ describe('ExperimentUI', () => {
     it('should end session and show login interface for incomplete experiment', () => {
       mockExperimentManager.getCompletedSessionsCount.returns(5);
       experimentUI.handleEndSession();
-      
+
       assert(mockExperimentManager.endSession.called);
       assert(global.window.dispatchEvent.called);
     });
@@ -183,7 +183,7 @@ describe('ExperimentUI', () => {
     it('should show complete interface when all sessions done', () => {
       mockExperimentManager.getCompletedSessionsCount.returns(9);
       experimentUI.handleEndSession();
-      
+
       assert(mockExperimentManager.endSession.called);
     });
   });
@@ -196,9 +196,9 @@ describe('ExperimentUI', () => {
     it('should export both JSON and CSV formats', () => {
       mockExperimentManager.exportData.onFirstCall().returns('{"json": "data"}');
       mockExperimentManager.exportData.onSecondCall().returns('csv,data');
-      
+
       experimentUI.handleExportData();
-      
+
       assert(mockExperimentManager.exportData.calledWith('json'));
       assert(mockExperimentManager.exportData.calledWith('csv'));
       assert.strictEqual(mockDocument.createElement.callCount, 2);
@@ -213,7 +213,7 @@ describe('ExperimentUI', () => {
     it('should reset experiment when confirmed', () => {
       global.window.confirm.returns(true);
       experimentUI.handleResetExperiment();
-      
+
       assert(global.localStorage.removeItem.called);
       assert(global.window.location.reload.called);
     });
@@ -221,7 +221,7 @@ describe('ExperimentUI', () => {
     it('should not reset when cancelled', () => {
       global.window.confirm.returns(false);
       experimentUI.handleResetExperiment();
-      
+
       assert(!global.localStorage.removeItem.called);
       assert(!global.window.location.reload.called);
     });
@@ -234,19 +234,19 @@ describe('ExperimentUI', () => {
 
     it('should show login interface', () => {
       experimentUI.showLoginInterface();
-      
+
       assert.strictEqual(mockElement.style.display, 'block');
     });
 
     it('should show session interface', () => {
       experimentUI.showSessionInterface();
-      
+
       assert.strictEqual(mockElement.style.display, 'block');
     });
 
     it('should show complete interface', () => {
       experimentUI.showCompleteInterface();
-      
+
       assert.strictEqual(mockElement.style.display, 'block');
     });
   });
@@ -258,13 +258,13 @@ describe('ExperimentUI', () => {
 
     it('should update all session display elements', () => {
       experimentUI.updateSessionDisplay();
-      
+
       assert(mockElement.innerHTML.length > 0);
     });
 
     it('should handle null session info gracefully', () => {
       mockExperimentManager.getCurrentSessionInfo.returns(null);
-      
+
       assert.doesNotThrow(() => {
         experimentUI.updateSessionDisplay();
       });
@@ -274,7 +274,7 @@ describe('ExperimentUI', () => {
   describe('logMetric', () => {
     it('should log metric to experiment manager', () => {
       experimentUI.logMetric('test', { data: 'value' });
-      
+
       assert(mockExperimentManager.logEvent.calledWith('test', { data: 'value' }));
     });
   });
@@ -283,7 +283,7 @@ describe('ExperimentUI', () => {
     it('should remove interface and reset state', () => {
       experimentUI.initialize();
       experimentUI.destroy();
-      
+
       assert(mockElement.remove.called);
       assert.strictEqual(experimentUI.isInitialized, false);
     });
@@ -296,7 +296,7 @@ describe('ExperimentUI', () => {
 
     it('should create and trigger download', () => {
       experimentUI.downloadFile('test.txt', 'content');
-      
+
       assert(global.window.URL.createObjectURL.called);
       assert(mockDocument.createElement.called);
       assert(mockDocument.body.appendChild.called);
@@ -313,13 +313,13 @@ describe('ExperimentUI', () => {
 
     it('should update debug display', () => {
       experimentUI.updateDebugDisplay();
-      
+
       assert(mockElement.innerHTML.includes('test123'));
     });
 
     it('should toggle debug details', () => {
       experimentUI.toggleDebugDetails();
-      
+
       assert(mockElement.innerHTML.length > 0);
     });
   });

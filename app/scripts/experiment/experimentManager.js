@@ -35,20 +35,20 @@ class ExperimentManager {
       console.log('[ExperimentManager] ⏳ Supabase already initializing, waiting...');
       return;
     }
-    
+
     this.supabaseInitializing = true;
-    
+
     try {
       console.log('[ExperimentManager] 🔍 Checking SupabaseDataManager availability...');
       console.log('[ExperimentManager] typeof SupabaseDataManager:', typeof SupabaseDataManager);
-      
+
       if (typeof SupabaseDataManager !== 'undefined') {
         console.log('[ExperimentManager] ✨ Creating SupabaseDataManager instance...');
         this.supabaseManager = new SupabaseDataManager();
-        
+
         console.log('[ExperimentManager] 🚀 Initializing Supabase connection...');
         const initialized = await this.supabaseManager.initialize();
-        
+
         if (initialized) {
           console.log('[ExperimentManager] 🚀 Supabase integration enabled');
           console.log('[ExperimentManager] Supabase URL:', this.supabaseManager.supabaseUrl);
@@ -73,15 +73,15 @@ class ExperimentManager {
   async waitForSupabaseInitialization() {
     if (this.supabaseInitialized) return true;
     if (!this.useSupabase) return false;
-    
+
     // Wait up to 10 seconds for initialization
     const timeout = 10000;
     const startTime = Date.now();
-    
+
     while (this.supabaseInitializing && (Date.now() - startTime) < timeout) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-    
+
     return this.supabaseInitialized;
   }
 
@@ -144,12 +144,11 @@ class ExperimentManager {
         this.sessionOrder = userData.sessionOrder || [];
         console.log('[ExperimentManager] 📖 User data loaded from Supabase');
         return true;
-      } else {
-        // Initialize new user in Supabase
-        await this.supabaseManager.initializeUser(this.userId, []);
-        this.sessionOrder = [];
-        return true;
       }
+      // Initialize new user in Supabase
+      await this.supabaseManager.initializeUser(this.userId, []);
+      this.sessionOrder = [];
+      return true;
     } catch (error) {
       console.error('[ExperimentManager] Error loading from Supabase:', error);
       return false;
@@ -190,17 +189,17 @@ class ExperimentManager {
     // Debug logging to help identify the issue
     console.log('[ExperimentManager] Debug - sessionOrder:', this.sessionOrder);
     console.log('[ExperimentManager] Debug - completedSessions:', completedSessions);
-    
+
     const permutationId = this.sessionOrder[completedSessions];
     console.log('[ExperimentManager] Debug - permutationId:', permutationId);
-    
+
     if (permutationId === undefined) {
       throw new Error('Session order not properly initialized. Please refresh and try again.');
     }
-    
+
     const config = this.PERMUTATIONS[permutationId];
     console.log('[ExperimentManager] Debug - config:', config);
-    
+
     if (!config) {
       throw new Error(`Invalid permutation ID: ${permutationId}`);
     }
@@ -524,9 +523,7 @@ class ExperimentManager {
 
   getDetailedCount(eventType) {
     if (!this.currentMetrics || !this.currentMetrics.events) return 0;
-    return this.currentMetrics.events.filter(event => 
-      event.type === 'pelletEaten' && event.data && event.data.type === eventType
-    ).length;
+    return this.currentMetrics.events.filter(event => event.type === 'pelletEaten' && event.data && event.data.type === eventType).length;
   }
 
   getCompletedSessionsCount() {
@@ -862,7 +859,7 @@ class ExperimentManager {
     try {
       const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
       const link = document.createElement('a');
-      
+
       if (link.download !== undefined) {
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);

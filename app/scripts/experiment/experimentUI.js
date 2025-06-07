@@ -359,7 +359,7 @@ class ExperimentUI {
 
     // Reset metrics for new session
     this.resetMetricsDisplay();
-    
+
     // Update all the session information and start metrics display
     this.updateSessionDisplay();
     this.startMetricsDisplay();
@@ -460,7 +460,7 @@ class ExperimentUI {
 
     // eslint-disable-next-line no-console
     console.log('[ExperimentUI] Resetting metrics display for new session');
-    
+
     const metricsDiv = document.getElementById('metrics-display');
     if (metricsDiv) {
       // Reset to initial state showing zeros

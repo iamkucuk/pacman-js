@@ -57,7 +57,7 @@ class SpeedController {
 
   bindEvents() {
     console.log('[SpeedController] 🎧 Binding to speedConfigChanged event');
-    
+
     window.addEventListener('speedConfigChanged', (e) => {
       console.log('[SpeedController] 📡 RECEIVED speedConfigChanged event!', e.detail);
       this.applySpeedConfiguration(e.detail);
@@ -87,7 +87,7 @@ class SpeedController {
     if (this.originalSpeeds.pacman === null) {
       console.log('[SpeedController] ⏳ Original speeds not stored yet, storing now...');
       this.storeOriginalSpeeds();
-      
+
       // If still not ready after attempting to store, retry in 1 second
       if (this.originalSpeeds.pacman === null) {
         console.log('[SpeedController] ⏰ Retrying speed application in 1 second...');
@@ -125,7 +125,7 @@ class SpeedController {
     // Check if Pac-Man speed has been reset
     const expectedPacmanSpeed = this.originalSpeeds.pacman * this.currentMultipliers.pacman;
     const actualPacmanSpeed = this.gameCoordinator.pacman.velocityPerMs;
-    
+
     if (Math.abs(actualPacmanSpeed - expectedPacmanSpeed) > 0.001) {
       console.log(`[SpeedController] 🔄 Pac-Man speed drift detected! Expected: ${expectedPacmanSpeed}, Actual: ${actualPacmanSpeed}, Reapplying...`);
       this.applyPacmanSpeed(this.currentMultipliers.pacman);
@@ -138,7 +138,7 @@ class SpeedController {
         if (originalSpeeds) {
           const expectedSpeed = originalSpeeds.defaultSpeed * this.currentMultipliers.ghost;
           const actualSpeed = ghost.velocityPerMs;
-          
+
           if (Math.abs(actualSpeed - expectedSpeed) > 0.001) {
             console.log(`[SpeedController] 🔄 ${ghost.name} speed drift detected! Expected: ${expectedSpeed}, Actual: ${actualSpeed}, Reapplying...`);
             // Reapply all ghost speeds
@@ -254,7 +254,7 @@ class SpeedController {
     console.log('=== SPEED CONTROLLER DEBUG ===');
     console.log('Is Initialized:', this.isInitialized);
     console.log('Current Multipliers:', this.currentMultipliers);
-    
+
     if (this.gameCoordinator && this.gameCoordinator.pacman) {
       console.log('Pac-Man Current Speed:', this.gameCoordinator.pacman.velocityPerMs);
       console.log('Pac-Man Original Speed:', this.originalSpeeds.pacman);
@@ -264,7 +264,7 @@ class SpeedController {
     }
 
     if (this.gameCoordinator && this.gameCoordinator.ghosts) {
-      this.gameCoordinator.ghosts.forEach(ghost => {
+      this.gameCoordinator.ghosts.forEach((ghost) => {
         console.log(`${ghost.name}:`);
         console.log(`  Current Speed: ${ghost.velocityPerMs}`);
         console.log(`  Default Speed: ${ghost.defaultSpeed}`);

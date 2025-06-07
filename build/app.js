@@ -1224,6 +1224,9 @@ class GameCoordinator {
     link.onload = this.preloadAssets.bind(this);
 
     head.appendChild(link);
+    
+    // Initialize experiment system
+    this.initializeExperiment();
   }
 
   setupUserIdFlow() {
@@ -1244,6 +1247,56 @@ class GameCoordinator {
         // Clear error when user starts typing
         if (userIdError) {
           userIdError.textContent = '';
+        }
+      });
+
+      // Check for auto-resume after End Session
+      const autoResumeUserId = localStorage.getItem('autoResumeUserId');
+      if (autoResumeUserId) {
+        console.log('[GameCoordinator] Auto-resuming with user ID:', autoResumeUserId);
+        
+        // Remove the flag so it doesn't auto-resume again
+        localStorage.removeItem('autoResumeUserId');
+        
+        // Fill in the user ID and trigger confirmation automatically
+        userIdInput.value = autoResumeUserId;
+        
+        // Trigger confirmation after a brief delay to ensure UI is ready
+        setTimeout(() => {
+          this.handleUserIdConfirmation();
+        }, 100);
+      }
+    }
+
+    // Setup session management button event listeners
+    this.setupSessionManagementButtons();
+  }
+
+  setupSessionManagementButtons() {
+    const resetBtn = document.getElementById('main-reset-experiment-btn');
+    const deleteLastBtn = document.getElementById('main-delete-last-session-btn');
+    const exportBtn = document.getElementById('main-export-data-btn');
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        if (this.experimentUI) {
+          this.experimentUI.handleResetExperiment();
+        }
+      });
+    }
+
+    if (deleteLastBtn) {
+      deleteLastBtn.addEventListener('click', () => {
+        if (this.experimentUI) {
+          this.experimentUI.handleDeleteLastSession();
+        }
+      });
+    }
+
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        if (this.experimentUI) {
+          this.experimentUI.handleExportData();
         }
       });
     }
@@ -1282,11 +1335,11 @@ class GameCoordinator {
         return;
       }
 
-      // Start next session
-      const session = await this.experimentManager.startSession();
+      // Get next session info WITHOUT creating the session yet
+      const sessionInfo = this.experimentManager.getNextSessionInfo();
       
       // Update display elements
-      this.updateSessionDisplay(session);
+      this.updateSessionDisplay(sessionInfo);
       
       // Hide user ID section and show session info
       userIdSection.style.display = 'none';
@@ -1298,19 +1351,18 @@ class GameCoordinator {
         gameStartButton.style.display = 'block';
       }
 
+      // Show session management buttons
+      const sessionManagement = document.getElementById('session-management');
+      if (sessionManagement) {
+        sessionManagement.style.display = 'block';
+      }
+
       // Clear any errors
       userIdError.textContent = '';
 
-      // Dispatch experiment session started event
-      window.dispatchEvent(new CustomEvent('experimentSessionStarted', {
-        detail: {
-          sessionId: session.sessionId,
-          speedConfig: session.speedConfig,
-          completedSessions: completedSessions
-        }
-      }));
+      // Don't dispatch experimentSessionStarted yet - wait until PLAY is clicked
 
-      console.log('[GameCoordinator] User ID confirmed, session started:', session);
+      console.log('[GameCoordinator] User ID confirmed, ready for session:', sessionInfo.sessionId);
 
     } catch (error) {
       console.error('[GameCoordinator] Error confirming user ID:', error);
@@ -1373,6 +1425,146 @@ class GameCoordinator {
 
     if (sessionInfoSection) {
       sessionInfoSection.style.display = 'none';
+    }
+  }
+
+  async handleResetExperiment() {
+    try {
+      // Show confirmation dialog
+      const confirmed = confirm(
+        '⚠️ Are you sure you want to reset the experiment?\n\n' +
+        'This will:\n' +
+        '• Delete ALL session data\n' +
+        '• Clear the user ID\n' +
+        '• Remove data from both local storage and cloud database\n' +
+        '• Start completely over\n\n' +
+        'This action cannot be undone!'
+      );
+
+      if (!confirmed) {
+        console.log('[GameCoordinator] Reset cancelled by user');
+        return;
+      }
+
+      console.log('[GameCoordinator] 🔄 Starting experiment reset...');
+
+      // Reset experiment data
+      if (this.experimentManager) {
+        const resetSuccess = await this.experimentManager.resetExperiment();
+        if (!resetSuccess) {
+          throw new Error('Failed to reset experiment data');
+        }
+      }
+
+      // Reset UI state to initial user ID input
+      this.resetUIToInitialState();
+
+      console.log('[GameCoordinator] ✅ Experiment reset completed successfully');
+
+    } catch (error) {
+      console.error('[GameCoordinator] ❌ Error during experiment reset:', error);
+      alert('Error resetting experiment: ' + error.message);
+    }
+  }
+
+  resetUIToInitialState() {
+    try {
+      console.log('[GameCoordinator] 🔄 Starting UI reset to initial state...');
+
+      // First, completely remove any experiment UI interfaces
+      const experimentInterface = document.getElementById('experiment-interface');
+      if (experimentInterface) {
+        console.log('[GameCoordinator] 🗑️ Removing experiment interface');
+        experimentInterface.remove();
+      }
+
+      // Stop any running game components
+      if (this.gameEngine && this.gameEngine.running) {
+        console.log('[GameCoordinator] ⏹️ Stopping game engine');
+        this.gameEngine.stop();
+      }
+
+      // Hide the game UI and show main menu
+      const gameUI = document.getElementById('game-ui');
+      const mainMenu = document.getElementById('main-menu-container');
+      
+      if (gameUI) {
+        gameUI.style.display = 'none';
+        console.log('[GameCoordinator] 🫥 Hidden game UI');
+      }
+      
+      if (mainMenu) {
+        mainMenu.style.display = 'flex';
+        console.log('[GameCoordinator] 👁️ Shown main menu');
+      }
+
+      // Get UI elements
+      const userIdSection = document.getElementById('user-id-section');
+      const sessionInfoSection = document.getElementById('session-info-section');
+      const gameStartButton = document.getElementById('game-start');
+
+      // Reset user ID section to initial state
+      if (userIdSection) {
+        userIdSection.innerHTML = `
+          <h3 class='experiment-title'>Pac-Man Speed Research Study</h3>
+          <p class='experiment-description'>Help us understand how speed affects gameplay</p>
+          <div class='user-id-input-container'>
+            <label for='main-user-id-input' class='user-id-label'>Enter your User ID:</label>
+            <input type='text' id='main-user-id-input' class='user-id-input' placeholder='Enter unique identifier' />
+            <button id='confirm-user-id' class='confirm-user-id-btn'>Continue</button>
+          </div>
+          <div id='user-id-error' class='user-id-error'></div>
+        `;
+        userIdSection.style.display = 'block';
+        console.log('[GameCoordinator] ✅ Reset user ID section');
+      }
+
+      // Hide session info section
+      if (sessionInfoSection) {
+        sessionInfoSection.style.display = 'none';
+        console.log('[GameCoordinator] 🫥 Hidden session info section');
+      }
+
+      // Hide game start button
+      if (gameStartButton) {
+        gameStartButton.style.display = 'none';
+        console.log('[GameCoordinator] 🫥 Hidden game start button');
+      }
+
+      // Re-setup user ID flow event listeners
+      this.setupUserIdFlow();
+
+      // Reset game state flags for fresh initialization
+      this.firstGame = true;
+      console.log('[GameCoordinator] 🔄 Reset firstGame flag to true');
+
+      // Reinitialize experiment system to ensure clean state
+      if (this.experimentManager) {
+        // Clear references to old experiment manager
+        this.experimentManager = null;
+        this.sessionManager = null;
+        this.progressController = null;
+        this.dataManager = null;
+        this.exportManager = null;
+        this.visualizationDashboard = null;
+        this.experimentUI = null;
+        this.speedController = null;
+        this.metricsCollector = null;
+        console.log('[GameCoordinator] 🧹 Cleared experiment references');
+      }
+
+      // Reinitialize experiment system after short delay
+      setTimeout(() => {
+        this.initializeExperiment();
+        console.log('[GameCoordinator] 🔄 Reinitialized experiment system');
+      }, 100);
+
+      console.log('[GameCoordinator] ✅ UI reset to initial state completed');
+    } catch (error) {
+      console.error('[GameCoordinator] ❌ Error during UI reset:', error);
+      // Fallback: reload page
+      console.log('[GameCoordinator] 🔄 UI reset failed, reloading page...');
+      window.location.reload();
     }
   }
 
@@ -1469,7 +1661,7 @@ class GameCoordinator {
   /**
    * Reveals the game underneath the loading covers and starts gameplay
    */
-  startButtonClick() {
+  async startButtonClick() {
     // Check if experiment is properly initialized
     if (!this.experimentManager.userId) {
       console.warn('[GameCoordinator] Cannot start game - no user ID set');
@@ -1477,11 +1669,32 @@ class GameCoordinator {
       return;
     }
 
-    // Check if experiment session is active
+    // Start the session if not already active (this creates the Supabase entry)
     if (!this.experimentManager.isExperimentActive) {
-      console.warn('[GameCoordinator] Cannot start game - no active experiment session');
-      alert('Please start an experiment session first.');
-      return;
+      try {
+        console.log('[GameCoordinator] Starting experiment session...');
+        const session = await this.experimentManager.startSession();
+        console.log('[GameCoordinator] Session started:', session.sessionId);
+      } catch (error) {
+        console.error('[GameCoordinator] Failed to start session:', error);
+        alert('Failed to start session: ' + error.message);
+        return;
+      }
+    }
+
+    // Always dispatch experiment session started event when game starts
+    window.dispatchEvent(new CustomEvent('experimentSessionStarted', {
+      detail: {
+        sessionId: this.experimentManager.currentSession?.sessionId,
+        speedConfig: this.experimentManager.currentSession?.speedConfig,
+        completedSessions: this.experimentManager.getCompletedSessionsCount() - 1
+      }
+    }));
+
+    // Hide session management buttons during gameplay
+    const sessionManagement = document.getElementById('session-management');
+    if (sessionManagement) {
+      sessionManagement.style.display = 'none';
     }
 
     this.leftCover.style.left = '-50%';
@@ -2535,7 +2748,7 @@ class GameCoordinator {
       this.updateSessionDisplay(session);
       
       // Show the main menu with session info already populated
-      this.reset();
+      // Don't call reset() here - it should only be called when game starts
       this.mainMenu.style.opacity = 1;
       this.gameStartButton.disabled = false;
       this.mainMenu.style.visibility = 'visible';
@@ -3826,6 +4039,35 @@ class ExperimentManager {
     return permutations;
   }
 
+  getNextSessionInfo() {
+    if (!this.userId) {
+      throw new Error('User ID must be set before getting session info');
+    }
+
+    const completedSessions = this.getCompletedSessionsCount();
+    if (completedSessions >= 9) {
+      return null; // All sessions completed
+    }
+
+    const permutationId = this.sessionOrder[completedSessions];
+    if (permutationId === undefined) {
+      throw new Error('Session order not properly initialized');
+    }
+
+    const config = this.PERMUTATIONS[permutationId];
+    if (!config) {
+      throw new Error(`Invalid permutation ID: ${permutationId}`);
+    }
+
+    return {
+      userId: this.userId,
+      sessionId: completedSessions + 1,
+      permutationId,
+      speedConfig: config,
+      completedSessions
+    };
+  }
+
   async initializeUser(userId) {
     if (!userId || userId.trim() === '') {
       throw new Error('User ID is required');
@@ -4665,6 +4907,134 @@ class ExperimentManager {
     }
   }
 
+  /**
+   * Reset all experiment data (localStorage and Supabase)
+   */
+  async resetExperiment() {
+    try {
+      console.log('[ExperimentManager] 🔄 Starting experiment reset...');
+
+      // Get current user ID before reset
+      const userIdToDelete = this.userId;
+
+      // Stop any current session
+      if (this.isExperimentActive) {
+        this.isExperimentActive = false;
+        this.currentSession = null;
+        this.currentMetrics = null;
+        this.gameStartTime = null;
+        console.log('[ExperimentManager] ⏹️ Stopped current session');
+      }
+
+      // Clear localStorage data
+      try {
+        localStorage.removeItem('pacman-experiment-user-id');
+        localStorage.removeItem(`pacman-experiment-${userIdToDelete}`);
+        console.log('[ExperimentManager] ✅ Cleared localStorage data');
+      } catch (error) {
+        console.warn('[ExperimentManager] ⚠️ Error clearing localStorage:', error);
+      }
+
+      // Clear Supabase data if available and user exists
+      if (userIdToDelete && this.useSupabase && this.supabaseManager) {
+        try {
+          console.log('[ExperimentManager] 🗑️ Deleting Supabase data for user:', userIdToDelete);
+          const supabaseResult = await this.supabaseManager.deleteUserData(userIdToDelete);
+          if (supabaseResult && supabaseResult.success) {
+            console.log('[ExperimentManager] ✅ Supabase data deleted successfully:', supabaseResult.message);
+          } else {
+            console.warn('[ExperimentManager] ⚠️ Supabase deletion failed:', supabaseResult?.message || 'Unknown error');
+            // Don't throw error here - continue with reset even if Supabase fails
+          }
+        } catch (error) {
+          console.warn('[ExperimentManager] ⚠️ Error deleting Supabase data:', error);
+          // Don't throw error here - continue with reset even if Supabase fails
+        }
+      }
+
+      // Reset instance variables
+      this.userId = null;
+      this.sessionOrder = [];
+      this.metrics = [];
+      this.currentSession = null;
+      this.currentMetrics = null;
+      this.gameStartTime = null;
+      this.isExperimentActive = false;
+      this.dataLoadedFromSupabase = false;
+
+      console.log('[ExperimentManager] 🎉 Experiment reset completed successfully');
+      return true;
+    } catch (error) {
+      console.error('[ExperimentManager] ❌ Error during experiment reset:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Delete the last session's data from Supabase and localStorage
+   */
+  async deleteLastSession() {
+    try {
+      console.log('[ExperimentManager] 🗑️ Starting deletion of last session...');
+
+      if (!this.userId) {
+        throw new Error('No user ID available');
+      }
+
+      // Delete from Supabase if available
+      let supabaseResult = null;
+      if (this.useSupabase && this.supabaseManager) {
+        try {
+          console.log('[ExperimentManager] 🗑️ Deleting last session from Supabase for user:', this.userId);
+          supabaseResult = await this.supabaseManager.deleteLastSession(this.userId);
+          if (supabaseResult.success) {
+            console.log('[ExperimentManager] ✅ Supabase last session deleted:', supabaseResult.message);
+          } else {
+            console.warn('[ExperimentManager] ⚠️ Supabase deletion failed:', supabaseResult.message);
+          }
+        } catch (error) {
+          console.warn('[ExperimentManager] ⚠️ Error deleting from Supabase:', error);
+        }
+      }
+
+      // Remove last session from localStorage metrics
+      if (this.metrics && this.metrics.length > 0) {
+        const removedSession = this.metrics.pop();
+        console.log('[ExperimentManager] ✅ Removed last session from localStorage metrics');
+        
+        // Update localStorage
+        try {
+          const storageKey = `pacman-experiment-${this.userId}`;
+          const userData = {
+            userId: this.userId,
+            sessionOrder: this.sessionOrder,
+            metrics: this.metrics,
+            lastUpdated: new Date().toISOString()
+          };
+          localStorage.setItem(storageKey, JSON.stringify(userData));
+          console.log('[ExperimentManager] ✅ Updated localStorage after session deletion');
+        } catch (error) {
+          console.warn('[ExperimentManager] ⚠️ Error updating localStorage:', error);
+        }
+      }
+
+      const message = supabaseResult ? supabaseResult.message : 'Last session removed from local data';
+      console.log('[ExperimentManager] 🎉 Last session deletion completed:', message);
+      
+      return { 
+        success: true, 
+        message,
+        supabaseResult
+      };
+    } catch (error) {
+      console.error('[ExperimentManager] ❌ Error during last session deletion:', error);
+      return { 
+        success: false, 
+        message: error.message 
+      };
+    }
+  }
+
   getDebugInfo() {
     return {
       userId: this.userId,
@@ -4749,11 +5119,6 @@ class ExperimentUI {
             cursor: pointer; font-size: 11px; font-weight: bold; color: white;">
             End Session
           </button>
-          <button id="export-data-btn" style="width: 100%; padding: 6px; 
-            background: #4444ff; border: none; border-radius: 4px; 
-            cursor: pointer; margin-top: 4px; font-size: 10px; color: white;">
-            Export Data
-          </button>
           </div>
         </div>
         
@@ -4805,25 +5170,10 @@ class ExperimentUI {
     if (this.isTestEnvironment) return;
 
     const endBtn = document.getElementById('end-session-btn');
-    const exportBtn = document.getElementById('export-data-btn');
-    const exportFinalBtn = document.getElementById('export-final-data-btn');
-    const resetBtn = document.getElementById('reset-experiment-btn');
     const minimizeBtn = document.getElementById('minimize-metrics-btn');
 
     if (endBtn) {
       endBtn.addEventListener('click', () => this.handleEndSession());
-    }
-
-    if (exportBtn) {
-      exportBtn.addEventListener('click', () => this.handleExportData());
-    }
-
-    if (exportFinalBtn) {
-      exportFinalBtn.addEventListener('click', () => this.handleExportData());
-    }
-
-    if (resetBtn) {
-      resetBtn.addEventListener('click', () => this.handleResetExperiment());
     }
 
     if (minimizeBtn) {
@@ -4858,82 +5208,61 @@ class ExperimentUI {
   }
 
 
-  handleEndSession() {
+  async handleEndSession() {
     try {
       // eslint-disable-next-line no-console
-      console.log('[ExperimentUI] End session button clicked');
-
-      // Stop ALL metrics display intervals immediately
-      this.stopMetricsDisplay();
-
-      // Clear any other possible intervals
-      if (this.metricsUpdateInterval) {
-        clearInterval(this.metricsUpdateInterval);
-        this.metricsUpdateInterval = null;
-      }
-
-      // Completely remove the experiment interface from DOM
-      const experimentInterface = document
-        .getElementById('experiment-interface');
-      if (experimentInterface) {
+      console.log('[ExperimentUI] End session button clicked - saving session and reloading');
+      
+      // Store the current user ID so we can auto-continue after reload
+      const currentUserId = window.gameCoordinator?.experimentManager?.userId;
+      if (currentUserId) {
+        localStorage.setItem('autoResumeUserId', currentUserId);
         // eslint-disable-next-line no-console
-        console.log('[ExperimentUI] Removing experiment interface from DOM');
-        experimentInterface.remove();
+        console.log('[ExperimentUI] Stored user ID for auto-resume:', currentUserId);
       }
-
-      // Stop the game engine properly
-      if (window.gameCoordinator && window.gameCoordinator.gameEngine) {
+      
+      // End the current session properly and wait for it to complete
+      if (window.gameCoordinator && window.gameCoordinator.experimentManager) {
         // eslint-disable-next-line no-console
-        console.log('[ExperimentUI] Stopping game engine');
-        window.gameCoordinator.gameEngine.stop();
+        console.log('[ExperimentUI] Ending experiment session and waiting for save...');
+        
+        // Dispatch game ended event first
+        window.dispatchEvent(new CustomEvent('gameEnded', {
+          detail: {
+            sessionId: window.gameCoordinator.experimentManager.currentSession?.sessionId,
+            finalScore: window.gameCoordinator.points || 0,
+            gameTime: Date.now() - (window.gameCoordinator.gameStartTime || Date.now()),
+            reason: 'user_terminated',
+            timestamp: Date.now()
+          }
+        }));
 
-        // Also pause the game using the pause mechanism
-        if (window.gameCoordinator.gameEngine.running) {
-          window.gameCoordinator.gameEngine.changePausedState(true);
-        }
-      }
-
-      // Pause all game entities
-      if (window.gameCoordinator) {
-        // Stop Pacman movement
-        if (window.gameCoordinator.pacman) {
-          // eslint-disable-next-line no-console
-          console.log('[ExperimentUI] Stopping Pacman movement');
-          window.gameCoordinator.pacman.moving = false;
-        }
-
-        // Pause all ghosts
-        if (window.gameCoordinator.ghosts) {
-          // eslint-disable-next-line no-console
-          console.log('[ExperimentUI] Pausing ghosts');
-          window.gameCoordinator.ghosts.forEach((ghost) => {
-            if (ghost && typeof ghost.pause === 'function') {
-              ghost.pause(true);
-            }
-          });
-        }
-
-        // End session and show transition
+        // Actually end the session and wait for all async operations
+        await window.gameCoordinator.experimentManager.endSession();
         // eslint-disable-next-line no-console
-        console.log('[ExperimentUI] Ending experiment session and '
-          + 'showing transition');
-        window.gameCoordinator
-          .endExperimentSessionWithReason('user_terminated');
-
-        // Show session transition after a brief delay
-        setTimeout(() => {
-          window.gameCoordinator.showSessionTransition();
-        }, 100);
+        console.log('[ExperimentUI] ✅ Session saved successfully');
+        
+        // Dispatch session ended event
+        window.dispatchEvent(new CustomEvent('experimentSessionEnded', {
+          detail: {
+            sessionId: window.gameCoordinator.experimentManager.currentSession?.sessionId || 'unknown',
+            completedSessions: window.gameCoordinator.experimentManager.getCompletedSessionsCount(),
+            reason: 'user_terminated'
+          }
+        }));
       }
+      
+      // Now reload after session is properly saved
+      // eslint-disable-next-line no-console
+      console.log('[ExperimentUI] Reloading page for clean state');
+      window.location.reload();
+      
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Error ending session:', error);
-
-      // Fallback: try to at least show the session transition
-      if (window.gameCoordinator
-        && typeof window.gameCoordinator.showSessionTransition === 'function') {
-        window.gameCoordinator.showSessionTransition();
-      }
+      
+      // Fallback: just reload (data may not be saved but better than broken state)
+      window.location.reload();
     }
   }
 
@@ -4966,17 +5295,76 @@ class ExperimentUI {
     }
   }
 
-  handleResetExperiment() {
-    const confirmMessage = 'Are you sure you want to reset the experiment? '
-      + 'All data will be lost.';
-    // eslint-disable-next-line no-alert
-    if (window.confirm(confirmMessage)) {
-      if (this.experimentManager.userId) {
-        const expKey = `experiment_${this.experimentManager.userId}`;
-        const sessionKey = `current_session_${this.experimentManager.userId}`;
-        localStorage.removeItem(expKey);
-        localStorage.removeItem(sessionKey);
+  async handleResetExperiment() {
+    try {
+      // Show comprehensive confirmation dialog
+      const confirmed = confirm(
+        '⚠️ Are you sure you want to reset the experiment?\n\n' +
+        'This will:\n' +
+        '• Delete ALL session data\n' +
+        '• Clear the user ID\n' +
+        '• Remove data from both local storage and cloud database\n' +
+        '• Reload the page for a fresh start\n\n' +
+        'This action cannot be undone!'
+      );
+
+      if (!confirmed) {
+        console.log('[ExperimentUI] Reset cancelled by user');
+        return;
       }
+
+      console.log('[ExperimentUI] 🔄 Resetting experiment and reloading page...');
+
+      // Delete all experiment data
+      if (this.experimentManager) {
+        await this.experimentManager.resetExperiment();
+        console.log('[ExperimentUI] ✅ Experiment data deleted');
+      }
+
+      // Simple and reliable: reload the page for a completely fresh start
+      window.location.reload();
+
+    } catch (error) {
+      console.error('[ExperimentUI] ❌ Error during experiment reset:', error);
+      
+      // Even if data deletion fails, reload the page for a fresh start
+      window.location.reload();
+    }
+  }
+
+  async handleDeleteLastSession() {
+    try {
+      // Show confirmation dialog
+      const confirmed = confirm(
+        '⚠️ Delete the last completed session?\n\n' +
+        'This will:\n' +
+        '• Remove the most recent session from Supabase database\n' +
+        '• Remove session data from local storage\n' +
+        '• Reload the page for a fresh start\n' +
+        '• Allow you to replay that session configuration\n\n' +
+        'This action cannot be undone!'
+      );
+
+      if (!confirmed) {
+        console.log('[ExperimentUI] Delete last session cancelled by user');
+        return;
+      }
+
+      console.log('[ExperimentUI] 🗑️ Deleting last session and reloading page...');
+
+      // Delete the last session data
+      if (this.experimentManager) {
+        await this.experimentManager.deleteLastSession();
+        console.log('[ExperimentUI] ✅ Last session deleted');
+      }
+
+      // Simple and reliable: reload the page for a completely fresh start
+      window.location.reload();
+
+    } catch (error) {
+      console.error('[ExperimentUI] ❌ Error during last session deletion:', error);
+      
+      // Even if data deletion fails, reload the page for a fresh start
       window.location.reload();
     }
   }
@@ -5032,6 +5420,12 @@ class ExperimentUI {
 
   showSessionInterface() {
     if (this.isTestEnvironment) return;
+
+    // Ensure the main experiment interface is visible
+    const experimentInterface = document.getElementById('experiment-interface');
+    if (experimentInterface) {
+      experimentInterface.style.display = 'block';
+    }
 
     this.hideAllInterfaces();
     const sessionDiv = document.getElementById('experiment-session');
@@ -8338,6 +8732,214 @@ class SupabaseDataManager {
       console.error('[SupabaseDataManager] Error getting health stats:', 
         error);
       return null;
+    }
+  }
+
+  /**
+   * Delete all user data from database (for experiment reset)
+   */
+  async deleteUserData(userId) {
+    if (!this.isInitialized) {
+      console.error('[SupabaseDataManager] Cannot delete user data - not initialized');
+      return false;
+    }
+
+    try {
+      console.log('[SupabaseDataManager] 🗑️ Starting deletion of user data:', userId);
+
+      // First, verify the user exists
+      const { data: userCheck, error: userCheckError } = await this.supabase
+        .from('users')
+        .select('user_id')
+        .eq('user_id', userId);
+
+      if (userCheckError) {
+        console.error('[SupabaseDataManager] Error checking user existence:', userCheckError);
+        throw userCheckError;
+      }
+
+      if (!userCheck || userCheck.length === 0) {
+        console.log('[SupabaseDataManager] ℹ️ No user found with ID:', userId);
+        return { success: true, message: 'No user data found to delete' };
+      }
+
+      console.log('[SupabaseDataManager] ✅ User exists, proceeding with deletion');
+
+      // Get all session IDs for this user first
+      const { data: sessions, error: sessionError } = await this.supabase
+        .from('sessions')
+        .select('id, session_id')
+        .eq('user_id', userId);
+
+      if (sessionError) {
+        console.error('[SupabaseDataManager] Error fetching sessions:', sessionError);
+        throw sessionError;
+      }
+
+      const sessionIds = sessions.map(session => session.id);
+      console.log('[SupabaseDataManager] Found sessions to delete:', sessions);
+
+      // Delete in order: events -> session_summaries -> sessions -> users
+      if (sessionIds.length > 0) {
+        // Delete events
+        console.log('[SupabaseDataManager] 🗑️ Deleting events for sessions:', sessionIds);
+        const { data: deletedEvents, error: eventsError } = await this.supabase
+          .from('events')
+          .delete()
+          .in('session_id', sessionIds)
+          .select();
+
+        if (eventsError) {
+          console.error('[SupabaseDataManager] Error deleting events:', eventsError);
+          throw eventsError;
+        }
+        console.log('[SupabaseDataManager] ✅ Deleted events:', deletedEvents?.length || 0);
+
+        // Delete session summaries
+        console.log('[SupabaseDataManager] 🗑️ Deleting session summaries for sessions:', sessionIds);
+        const { data: deletedSummaries, error: summariesError } = await this.supabase
+          .from('session_summaries')
+          .delete()
+          .in('session_id', sessionIds)
+          .select();
+
+        if (summariesError) {
+          console.error('[SupabaseDataManager] Error deleting session summaries:', summariesError);
+          throw summariesError;
+        }
+        console.log('[SupabaseDataManager] ✅ Deleted session summaries:', deletedSummaries?.length || 0);
+
+        // Delete sessions
+        console.log('[SupabaseDataManager] 🗑️ Deleting sessions for user:', userId);
+        const { data: deletedSessions, error: sessionsError } = await this.supabase
+          .from('sessions')
+          .delete()
+          .eq('user_id', userId)
+          .select();
+
+        if (sessionsError) {
+          console.error('[SupabaseDataManager] Error deleting sessions:', sessionsError);
+          throw sessionsError;
+        }
+        console.log('[SupabaseDataManager] ✅ Deleted sessions:', deletedSessions?.length || 0);
+      } else {
+        console.log('[SupabaseDataManager] ℹ️ No sessions found for user:', userId);
+      }
+
+      // Delete user record
+      console.log('[SupabaseDataManager] 🗑️ Deleting user record:', userId);
+      const { data: deletedUser, error: userError } = await this.supabase
+        .from('users')
+        .delete()
+        .eq('user_id', userId)
+        .select();
+
+      if (userError) {
+        console.error('[SupabaseDataManager] Error deleting user record:', userError);
+        throw userError;
+      }
+      console.log('[SupabaseDataManager] ✅ Deleted user record:', deletedUser);
+
+      // Reset current session ID if it belongs to this user
+      this.currentSessionId = null;
+
+      // Verify deletion by checking if any data remains
+      const { data: remainingSessions } = await this.supabase
+        .from('sessions')
+        .select('id')
+        .eq('user_id', userId);
+
+      const { data: remainingUser } = await this.supabase
+        .from('users')
+        .select('user_id')
+        .eq('user_id', userId);
+
+      if (remainingSessions?.length > 0 || remainingUser?.length > 0) {
+        console.error('[SupabaseDataManager] ⚠️ Deletion verification failed - data still exists!');
+        console.error('Remaining sessions:', remainingSessions);
+        console.error('Remaining user:', remainingUser);
+        return { success: false, message: 'Deletion verification failed - data still exists' };
+      }
+
+      console.log('[SupabaseDataManager] 🎉 Successfully deleted all data for user:', userId);
+      console.log('[SupabaseDataManager] ✅ Deletion verified - no data remains');
+      return { success: true, message: 'All user data successfully deleted' };
+    } catch (error) {
+      console.error('[SupabaseDataManager] ❌ Error deleting user data:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
+  /**
+   * Delete the last (most recent) session's data for a user
+   */
+  async deleteLastSession(userId) {
+    if (!this.isInitialized) return false;
+
+    try {
+      console.log('[SupabaseDataManager] 🗑️ Starting deletion of last session for user:', userId);
+
+      // Get the most recent session for this user
+      const { data: lastSession, error: sessionError } = await this.supabase
+        .from('sessions')
+        .select('id, session_id, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (sessionError) {
+        if (sessionError.code === 'PGRST116') {
+          console.log('[SupabaseDataManager] ℹ️ No sessions found for user:', userId);
+          return { success: true, message: 'No sessions found to delete' };
+        }
+        throw sessionError;
+      }
+
+      console.log('[SupabaseDataManager] Found last session to delete:', lastSession);
+
+      // Delete in order: events -> session_summaries -> sessions
+      // Delete events for this session
+      const { error: eventsError } = await this.supabase
+        .from('events')
+        .delete()
+        .eq('session_id', lastSession.id);
+
+      if (eventsError) throw eventsError;
+      console.log('[SupabaseDataManager] ✅ Deleted events for session:', lastSession.id);
+
+      // Delete session summary for this session
+      const { error: summaryError } = await this.supabase
+        .from('session_summaries')
+        .delete()
+        .eq('session_id', lastSession.id);
+
+      if (summaryError) throw summaryError;
+      console.log('[SupabaseDataManager] ✅ Deleted session summary for session:', lastSession.id);
+
+      // Delete the session record
+      const { error: sessionDeleteError } = await this.supabase
+        .from('sessions')
+        .delete()
+        .eq('id', lastSession.id);
+
+      if (sessionDeleteError) throw sessionDeleteError;
+      console.log('[SupabaseDataManager] ✅ Deleted session record:', lastSession.id);
+
+      // Reset current session ID if it matches the deleted session
+      if (this.currentSessionId === lastSession.id) {
+        this.currentSessionId = null;
+      }
+
+      console.log('[SupabaseDataManager] 🎉 Successfully deleted last session:', lastSession.session_id);
+      return { 
+        success: true, 
+        message: `Deleted session ${lastSession.session_id}`,
+        deletedSessionId: lastSession.session_id 
+      };
+    } catch (error) {
+      console.error('[SupabaseDataManager] ❌ Error deleting last session:', error);
+      return { success: false, message: error.message };
     }
   }
 }

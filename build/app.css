@@ -320,6 +320,32 @@ body {
   cursor: default;
 }
 
+.reset-experiment-btn {
+  background-color: #ff4444;
+  border: 3px solid #231f20;
+  border-radius: 8px;
+  box-shadow: 3px 3px #aa0000;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-family: "Press Start 2P", monospace;
+  outline: none;
+  padding: 10px 20px;
+  margin-top: 20px;
+  transition: all 0.1s ease;
+}
+.reset-experiment-btn:hover {
+  background-color: #ff6666;
+}
+.reset-experiment-btn:active {
+  box-shadow: none;
+  transform: translateX(3px) translateY(3px);
+}
+.reset-experiment-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 @media only screen and (max-width: 600px) {
   .game-start {
     scale: 0.5;
@@ -347,6 +373,59 @@ body {
   }
   .session-text {
     font-size: 12px;
+  }
+  .reset-experiment-btn {
+    font-size: 12px;
+    padding: 8px 16px;
+  }
+}
+.session-management {
+  margin-top: 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.session-management .session-mgmt-btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: "Luckiest Guy", cursive;
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+  transition: all 0.2s ease;
+}
+.session-management .session-mgmt-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.session-management .session-mgmt-btn.reset-btn {
+  background: #cc2222;
+  color: white;
+}
+.session-management .session-mgmt-btn.reset-btn:hover {
+  background: #dd3333;
+}
+.session-management .session-mgmt-btn.delete-btn {
+  background: #ff8800;
+  color: white;
+}
+.session-management .session-mgmt-btn.delete-btn:hover {
+  background: #ff9922;
+}
+.session-management .session-mgmt-btn.export-btn {
+  background: #4444ff;
+  color: white;
+}
+.session-management .session-mgmt-btn.export-btn:hover {
+  background: #5555ff;
+}
+
+@media only screen and (max-width: 600px) {
+  .session-management .session-mgmt-btn {
+    font-size: 11px;
+    padding: 6px 12px;
   }
 }
 .loading-container {

@@ -104,6 +104,35 @@ class ExperimentManager {
     return permutations;
   }
 
+  getNextSessionInfo() {
+    if (!this.userId) {
+      throw new Error('User ID must be set before getting session info');
+    }
+
+    const completedSessions = this.getCompletedSessionsCount();
+    if (completedSessions >= 9) {
+      return null; // All sessions completed
+    }
+
+    const permutationId = this.sessionOrder[completedSessions];
+    if (permutationId === undefined) {
+      throw new Error('Session order not properly initialized');
+    }
+
+    const config = this.PERMUTATIONS[permutationId];
+    if (!config) {
+      throw new Error(`Invalid permutation ID: ${permutationId}`);
+    }
+
+    return {
+      userId: this.userId,
+      sessionId: completedSessions + 1,
+      permutationId,
+      speedConfig: config,
+      completedSessions
+    };
+  }
+
   async initializeUser(userId) {
     if (!userId || userId.trim() === '') {
       throw new Error('User ID is required');
@@ -940,6 +969,134 @@ class ExperimentManager {
     } catch (error) {
       console.error('[ExperimentManager] Error getting health stats:', error);
       return null;
+    }
+  }
+
+  /**
+   * Reset all experiment data (localStorage and Supabase)
+   */
+  async resetExperiment() {
+    try {
+      console.log('[ExperimentManager] 🔄 Starting experiment reset...');
+
+      // Get current user ID before reset
+      const userIdToDelete = this.userId;
+
+      // Stop any current session
+      if (this.isExperimentActive) {
+        this.isExperimentActive = false;
+        this.currentSession = null;
+        this.currentMetrics = null;
+        this.gameStartTime = null;
+        console.log('[ExperimentManager] ⏹️ Stopped current session');
+      }
+
+      // Clear localStorage data
+      try {
+        localStorage.removeItem('pacman-experiment-user-id');
+        localStorage.removeItem(`pacman-experiment-${userIdToDelete}`);
+        console.log('[ExperimentManager] ✅ Cleared localStorage data');
+      } catch (error) {
+        console.warn('[ExperimentManager] ⚠️ Error clearing localStorage:', error);
+      }
+
+      // Clear Supabase data if available and user exists
+      if (userIdToDelete && this.useSupabase && this.supabaseManager) {
+        try {
+          console.log('[ExperimentManager] 🗑️ Deleting Supabase data for user:', userIdToDelete);
+          const supabaseResult = await this.supabaseManager.deleteUserData(userIdToDelete);
+          if (supabaseResult && supabaseResult.success) {
+            console.log('[ExperimentManager] ✅ Supabase data deleted successfully:', supabaseResult.message);
+          } else {
+            console.warn('[ExperimentManager] ⚠️ Supabase deletion failed:', supabaseResult?.message || 'Unknown error');
+            // Don't throw error here - continue with reset even if Supabase fails
+          }
+        } catch (error) {
+          console.warn('[ExperimentManager] ⚠️ Error deleting Supabase data:', error);
+          // Don't throw error here - continue with reset even if Supabase fails
+        }
+      }
+
+      // Reset instance variables
+      this.userId = null;
+      this.sessionOrder = [];
+      this.metrics = [];
+      this.currentSession = null;
+      this.currentMetrics = null;
+      this.gameStartTime = null;
+      this.isExperimentActive = false;
+      this.dataLoadedFromSupabase = false;
+
+      console.log('[ExperimentManager] 🎉 Experiment reset completed successfully');
+      return true;
+    } catch (error) {
+      console.error('[ExperimentManager] ❌ Error during experiment reset:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Delete the last session's data from Supabase and localStorage
+   */
+  async deleteLastSession() {
+    try {
+      console.log('[ExperimentManager] 🗑️ Starting deletion of last session...');
+
+      if (!this.userId) {
+        throw new Error('No user ID available');
+      }
+
+      // Delete from Supabase if available
+      let supabaseResult = null;
+      if (this.useSupabase && this.supabaseManager) {
+        try {
+          console.log('[ExperimentManager] 🗑️ Deleting last session from Supabase for user:', this.userId);
+          supabaseResult = await this.supabaseManager.deleteLastSession(this.userId);
+          if (supabaseResult.success) {
+            console.log('[ExperimentManager] ✅ Supabase last session deleted:', supabaseResult.message);
+          } else {
+            console.warn('[ExperimentManager] ⚠️ Supabase deletion failed:', supabaseResult.message);
+          }
+        } catch (error) {
+          console.warn('[ExperimentManager] ⚠️ Error deleting from Supabase:', error);
+        }
+      }
+
+      // Remove last session from localStorage metrics
+      if (this.metrics && this.metrics.length > 0) {
+        const removedSession = this.metrics.pop();
+        console.log('[ExperimentManager] ✅ Removed last session from localStorage metrics');
+        
+        // Update localStorage
+        try {
+          const storageKey = `pacman-experiment-${this.userId}`;
+          const userData = {
+            userId: this.userId,
+            sessionOrder: this.sessionOrder,
+            metrics: this.metrics,
+            lastUpdated: new Date().toISOString()
+          };
+          localStorage.setItem(storageKey, JSON.stringify(userData));
+          console.log('[ExperimentManager] ✅ Updated localStorage after session deletion');
+        } catch (error) {
+          console.warn('[ExperimentManager] ⚠️ Error updating localStorage:', error);
+        }
+      }
+
+      const message = supabaseResult ? supabaseResult.message : 'Last session removed from local data';
+      console.log('[ExperimentManager] 🎉 Last session deletion completed:', message);
+      
+      return { 
+        success: true, 
+        message,
+        supabaseResult
+      };
+    } catch (error) {
+      console.error('[ExperimentManager] ❌ Error during last session deletion:', error);
+      return { 
+        success: false, 
+        message: error.message 
+      };
     }
   }
 

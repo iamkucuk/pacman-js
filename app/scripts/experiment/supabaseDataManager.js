@@ -431,6 +431,214 @@ class SupabaseDataManager {
       return null;
     }
   }
+
+  /**
+   * Delete all user data from database (for experiment reset)
+   */
+  async deleteUserData(userId) {
+    if (!this.isInitialized) {
+      console.error('[SupabaseDataManager] Cannot delete user data - not initialized');
+      return false;
+    }
+
+    try {
+      console.log('[SupabaseDataManager] 🗑️ Starting deletion of user data:', userId);
+
+      // First, verify the user exists
+      const { data: userCheck, error: userCheckError } = await this.supabase
+        .from('users')
+        .select('user_id')
+        .eq('user_id', userId);
+
+      if (userCheckError) {
+        console.error('[SupabaseDataManager] Error checking user existence:', userCheckError);
+        throw userCheckError;
+      }
+
+      if (!userCheck || userCheck.length === 0) {
+        console.log('[SupabaseDataManager] ℹ️ No user found with ID:', userId);
+        return { success: true, message: 'No user data found to delete' };
+      }
+
+      console.log('[SupabaseDataManager] ✅ User exists, proceeding with deletion');
+
+      // Get all session IDs for this user first
+      const { data: sessions, error: sessionError } = await this.supabase
+        .from('sessions')
+        .select('id, session_id')
+        .eq('user_id', userId);
+
+      if (sessionError) {
+        console.error('[SupabaseDataManager] Error fetching sessions:', sessionError);
+        throw sessionError;
+      }
+
+      const sessionIds = sessions.map(session => session.id);
+      console.log('[SupabaseDataManager] Found sessions to delete:', sessions);
+
+      // Delete in order: events -> session_summaries -> sessions -> users
+      if (sessionIds.length > 0) {
+        // Delete events
+        console.log('[SupabaseDataManager] 🗑️ Deleting events for sessions:', sessionIds);
+        const { data: deletedEvents, error: eventsError } = await this.supabase
+          .from('events')
+          .delete()
+          .in('session_id', sessionIds)
+          .select();
+
+        if (eventsError) {
+          console.error('[SupabaseDataManager] Error deleting events:', eventsError);
+          throw eventsError;
+        }
+        console.log('[SupabaseDataManager] ✅ Deleted events:', deletedEvents?.length || 0);
+
+        // Delete session summaries
+        console.log('[SupabaseDataManager] 🗑️ Deleting session summaries for sessions:', sessionIds);
+        const { data: deletedSummaries, error: summariesError } = await this.supabase
+          .from('session_summaries')
+          .delete()
+          .in('session_id', sessionIds)
+          .select();
+
+        if (summariesError) {
+          console.error('[SupabaseDataManager] Error deleting session summaries:', summariesError);
+          throw summariesError;
+        }
+        console.log('[SupabaseDataManager] ✅ Deleted session summaries:', deletedSummaries?.length || 0);
+
+        // Delete sessions
+        console.log('[SupabaseDataManager] 🗑️ Deleting sessions for user:', userId);
+        const { data: deletedSessions, error: sessionsError } = await this.supabase
+          .from('sessions')
+          .delete()
+          .eq('user_id', userId)
+          .select();
+
+        if (sessionsError) {
+          console.error('[SupabaseDataManager] Error deleting sessions:', sessionsError);
+          throw sessionsError;
+        }
+        console.log('[SupabaseDataManager] ✅ Deleted sessions:', deletedSessions?.length || 0);
+      } else {
+        console.log('[SupabaseDataManager] ℹ️ No sessions found for user:', userId);
+      }
+
+      // Delete user record
+      console.log('[SupabaseDataManager] 🗑️ Deleting user record:', userId);
+      const { data: deletedUser, error: userError } = await this.supabase
+        .from('users')
+        .delete()
+        .eq('user_id', userId)
+        .select();
+
+      if (userError) {
+        console.error('[SupabaseDataManager] Error deleting user record:', userError);
+        throw userError;
+      }
+      console.log('[SupabaseDataManager] ✅ Deleted user record:', deletedUser);
+
+      // Reset current session ID if it belongs to this user
+      this.currentSessionId = null;
+
+      // Verify deletion by checking if any data remains
+      const { data: remainingSessions } = await this.supabase
+        .from('sessions')
+        .select('id')
+        .eq('user_id', userId);
+
+      const { data: remainingUser } = await this.supabase
+        .from('users')
+        .select('user_id')
+        .eq('user_id', userId);
+
+      if (remainingSessions?.length > 0 || remainingUser?.length > 0) {
+        console.error('[SupabaseDataManager] ⚠️ Deletion verification failed - data still exists!');
+        console.error('Remaining sessions:', remainingSessions);
+        console.error('Remaining user:', remainingUser);
+        return { success: false, message: 'Deletion verification failed - data still exists' };
+      }
+
+      console.log('[SupabaseDataManager] 🎉 Successfully deleted all data for user:', userId);
+      console.log('[SupabaseDataManager] ✅ Deletion verified - no data remains');
+      return { success: true, message: 'All user data successfully deleted' };
+    } catch (error) {
+      console.error('[SupabaseDataManager] ❌ Error deleting user data:', error);
+      return { success: false, message: error.message };
+    }
+  }
+
+  /**
+   * Delete the last (most recent) session's data for a user
+   */
+  async deleteLastSession(userId) {
+    if (!this.isInitialized) return false;
+
+    try {
+      console.log('[SupabaseDataManager] 🗑️ Starting deletion of last session for user:', userId);
+
+      // Get the most recent session for this user
+      const { data: lastSession, error: sessionError } = await this.supabase
+        .from('sessions')
+        .select('id, session_id, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (sessionError) {
+        if (sessionError.code === 'PGRST116') {
+          console.log('[SupabaseDataManager] ℹ️ No sessions found for user:', userId);
+          return { success: true, message: 'No sessions found to delete' };
+        }
+        throw sessionError;
+      }
+
+      console.log('[SupabaseDataManager] Found last session to delete:', lastSession);
+
+      // Delete in order: events -> session_summaries -> sessions
+      // Delete events for this session
+      const { error: eventsError } = await this.supabase
+        .from('events')
+        .delete()
+        .eq('session_id', lastSession.id);
+
+      if (eventsError) throw eventsError;
+      console.log('[SupabaseDataManager] ✅ Deleted events for session:', lastSession.id);
+
+      // Delete session summary for this session
+      const { error: summaryError } = await this.supabase
+        .from('session_summaries')
+        .delete()
+        .eq('session_id', lastSession.id);
+
+      if (summaryError) throw summaryError;
+      console.log('[SupabaseDataManager] ✅ Deleted session summary for session:', lastSession.id);
+
+      // Delete the session record
+      const { error: sessionDeleteError } = await this.supabase
+        .from('sessions')
+        .delete()
+        .eq('id', lastSession.id);
+
+      if (sessionDeleteError) throw sessionDeleteError;
+      console.log('[SupabaseDataManager] ✅ Deleted session record:', lastSession.id);
+
+      // Reset current session ID if it matches the deleted session
+      if (this.currentSessionId === lastSession.id) {
+        this.currentSessionId = null;
+      }
+
+      console.log('[SupabaseDataManager] 🎉 Successfully deleted last session:', lastSession.session_id);
+      return { 
+        success: true, 
+        message: `Deleted session ${lastSession.session_id}`,
+        deletedSessionId: lastSession.session_id 
+      };
+    } catch (error) {
+      console.error('[SupabaseDataManager] ❌ Error deleting last session:', error);
+      return { success: false, message: error.message };
+    }
+  }
 }
 
 // Export for both browser and Node.js environments

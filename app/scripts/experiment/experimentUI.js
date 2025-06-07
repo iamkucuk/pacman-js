@@ -67,11 +67,6 @@ class ExperimentUI {
             cursor: pointer; font-size: 11px; font-weight: bold; color: white;">
             End Session
           </button>
-          <button id="export-data-btn" style="width: 100%; padding: 6px; 
-            background: #4444ff; border: none; border-radius: 4px; 
-            cursor: pointer; margin-top: 4px; font-size: 10px; color: white;">
-            Export Data
-          </button>
           </div>
         </div>
         
@@ -123,25 +118,10 @@ class ExperimentUI {
     if (this.isTestEnvironment) return;
 
     const endBtn = document.getElementById('end-session-btn');
-    const exportBtn = document.getElementById('export-data-btn');
-    const exportFinalBtn = document.getElementById('export-final-data-btn');
-    const resetBtn = document.getElementById('reset-experiment-btn');
     const minimizeBtn = document.getElementById('minimize-metrics-btn');
 
     if (endBtn) {
       endBtn.addEventListener('click', () => this.handleEndSession());
-    }
-
-    if (exportBtn) {
-      exportBtn.addEventListener('click', () => this.handleExportData());
-    }
-
-    if (exportFinalBtn) {
-      exportFinalBtn.addEventListener('click', () => this.handleExportData());
-    }
-
-    if (resetBtn) {
-      resetBtn.addEventListener('click', () => this.handleResetExperiment());
     }
 
     if (minimizeBtn) {
@@ -176,82 +156,61 @@ class ExperimentUI {
   }
 
 
-  handleEndSession() {
+  async handleEndSession() {
     try {
       // eslint-disable-next-line no-console
-      console.log('[ExperimentUI] End session button clicked');
-
-      // Stop ALL metrics display intervals immediately
-      this.stopMetricsDisplay();
-
-      // Clear any other possible intervals
-      if (this.metricsUpdateInterval) {
-        clearInterval(this.metricsUpdateInterval);
-        this.metricsUpdateInterval = null;
-      }
-
-      // Completely remove the experiment interface from DOM
-      const experimentInterface = document
-        .getElementById('experiment-interface');
-      if (experimentInterface) {
+      console.log('[ExperimentUI] End session button clicked - saving session and reloading');
+      
+      // Store the current user ID so we can auto-continue after reload
+      const currentUserId = window.gameCoordinator?.experimentManager?.userId;
+      if (currentUserId) {
+        localStorage.setItem('autoResumeUserId', currentUserId);
         // eslint-disable-next-line no-console
-        console.log('[ExperimentUI] Removing experiment interface from DOM');
-        experimentInterface.remove();
+        console.log('[ExperimentUI] Stored user ID for auto-resume:', currentUserId);
       }
-
-      // Stop the game engine properly
-      if (window.gameCoordinator && window.gameCoordinator.gameEngine) {
+      
+      // End the current session properly and wait for it to complete
+      if (window.gameCoordinator && window.gameCoordinator.experimentManager) {
         // eslint-disable-next-line no-console
-        console.log('[ExperimentUI] Stopping game engine');
-        window.gameCoordinator.gameEngine.stop();
+        console.log('[ExperimentUI] Ending experiment session and waiting for save...');
+        
+        // Dispatch game ended event first
+        window.dispatchEvent(new CustomEvent('gameEnded', {
+          detail: {
+            sessionId: window.gameCoordinator.experimentManager.currentSession?.sessionId,
+            finalScore: window.gameCoordinator.points || 0,
+            gameTime: Date.now() - (window.gameCoordinator.gameStartTime || Date.now()),
+            reason: 'user_terminated',
+            timestamp: Date.now()
+          }
+        }));
 
-        // Also pause the game using the pause mechanism
-        if (window.gameCoordinator.gameEngine.running) {
-          window.gameCoordinator.gameEngine.changePausedState(true);
-        }
-      }
-
-      // Pause all game entities
-      if (window.gameCoordinator) {
-        // Stop Pacman movement
-        if (window.gameCoordinator.pacman) {
-          // eslint-disable-next-line no-console
-          console.log('[ExperimentUI] Stopping Pacman movement');
-          window.gameCoordinator.pacman.moving = false;
-        }
-
-        // Pause all ghosts
-        if (window.gameCoordinator.ghosts) {
-          // eslint-disable-next-line no-console
-          console.log('[ExperimentUI] Pausing ghosts');
-          window.gameCoordinator.ghosts.forEach((ghost) => {
-            if (ghost && typeof ghost.pause === 'function') {
-              ghost.pause(true);
-            }
-          });
-        }
-
-        // End session and show transition
+        // Actually end the session and wait for all async operations
+        await window.gameCoordinator.experimentManager.endSession();
         // eslint-disable-next-line no-console
-        console.log('[ExperimentUI] Ending experiment session and '
-          + 'showing transition');
-        window.gameCoordinator
-          .endExperimentSessionWithReason('user_terminated');
-
-        // Show session transition after a brief delay
-        setTimeout(() => {
-          window.gameCoordinator.showSessionTransition();
-        }, 100);
+        console.log('[ExperimentUI] ✅ Session saved successfully');
+        
+        // Dispatch session ended event
+        window.dispatchEvent(new CustomEvent('experimentSessionEnded', {
+          detail: {
+            sessionId: window.gameCoordinator.experimentManager.currentSession?.sessionId || 'unknown',
+            completedSessions: window.gameCoordinator.experimentManager.getCompletedSessionsCount(),
+            reason: 'user_terminated'
+          }
+        }));
       }
+      
+      // Now reload after session is properly saved
+      // eslint-disable-next-line no-console
+      console.log('[ExperimentUI] Reloading page for clean state');
+      window.location.reload();
+      
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Error ending session:', error);
-
-      // Fallback: try to at least show the session transition
-      if (window.gameCoordinator
-        && typeof window.gameCoordinator.showSessionTransition === 'function') {
-        window.gameCoordinator.showSessionTransition();
-      }
+      
+      // Fallback: just reload (data may not be saved but better than broken state)
+      window.location.reload();
     }
   }
 
@@ -284,17 +243,76 @@ class ExperimentUI {
     }
   }
 
-  handleResetExperiment() {
-    const confirmMessage = 'Are you sure you want to reset the experiment? '
-      + 'All data will be lost.';
-    // eslint-disable-next-line no-alert
-    if (window.confirm(confirmMessage)) {
-      if (this.experimentManager.userId) {
-        const expKey = `experiment_${this.experimentManager.userId}`;
-        const sessionKey = `current_session_${this.experimentManager.userId}`;
-        localStorage.removeItem(expKey);
-        localStorage.removeItem(sessionKey);
+  async handleResetExperiment() {
+    try {
+      // Show comprehensive confirmation dialog
+      const confirmed = confirm(
+        '⚠️ Are you sure you want to reset the experiment?\n\n' +
+        'This will:\n' +
+        '• Delete ALL session data\n' +
+        '• Clear the user ID\n' +
+        '• Remove data from both local storage and cloud database\n' +
+        '• Reload the page for a fresh start\n\n' +
+        'This action cannot be undone!'
+      );
+
+      if (!confirmed) {
+        console.log('[ExperimentUI] Reset cancelled by user');
+        return;
       }
+
+      console.log('[ExperimentUI] 🔄 Resetting experiment and reloading page...');
+
+      // Delete all experiment data
+      if (this.experimentManager) {
+        await this.experimentManager.resetExperiment();
+        console.log('[ExperimentUI] ✅ Experiment data deleted');
+      }
+
+      // Simple and reliable: reload the page for a completely fresh start
+      window.location.reload();
+
+    } catch (error) {
+      console.error('[ExperimentUI] ❌ Error during experiment reset:', error);
+      
+      // Even if data deletion fails, reload the page for a fresh start
+      window.location.reload();
+    }
+  }
+
+  async handleDeleteLastSession() {
+    try {
+      // Show confirmation dialog
+      const confirmed = confirm(
+        '⚠️ Delete the last completed session?\n\n' +
+        'This will:\n' +
+        '• Remove the most recent session from Supabase database\n' +
+        '• Remove session data from local storage\n' +
+        '• Reload the page for a fresh start\n' +
+        '• Allow you to replay that session configuration\n\n' +
+        'This action cannot be undone!'
+      );
+
+      if (!confirmed) {
+        console.log('[ExperimentUI] Delete last session cancelled by user');
+        return;
+      }
+
+      console.log('[ExperimentUI] 🗑️ Deleting last session and reloading page...');
+
+      // Delete the last session data
+      if (this.experimentManager) {
+        await this.experimentManager.deleteLastSession();
+        console.log('[ExperimentUI] ✅ Last session deleted');
+      }
+
+      // Simple and reliable: reload the page for a completely fresh start
+      window.location.reload();
+
+    } catch (error) {
+      console.error('[ExperimentUI] ❌ Error during last session deletion:', error);
+      
+      // Even if data deletion fails, reload the page for a fresh start
       window.location.reload();
     }
   }
@@ -350,6 +368,12 @@ class ExperimentUI {
 
   showSessionInterface() {
     if (this.isTestEnvironment) return;
+
+    // Ensure the main experiment interface is visible
+    const experimentInterface = document.getElementById('experiment-interface');
+    if (experimentInterface) {
+      experimentInterface.style.display = 'block';
+    }
 
     this.hideAllInterfaces();
     const sessionDiv = document.getElementById('experiment-session');

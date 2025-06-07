@@ -114,6 +114,9 @@ class GameCoordinator {
     link.onload = this.preloadAssets.bind(this);
 
     head.appendChild(link);
+    
+    // Initialize experiment system
+    this.initializeExperiment();
   }
 
   setupUserIdFlow() {
@@ -134,6 +137,56 @@ class GameCoordinator {
         // Clear error when user starts typing
         if (userIdError) {
           userIdError.textContent = '';
+        }
+      });
+
+      // Check for auto-resume after End Session
+      const autoResumeUserId = localStorage.getItem('autoResumeUserId');
+      if (autoResumeUserId) {
+        console.log('[GameCoordinator] Auto-resuming with user ID:', autoResumeUserId);
+        
+        // Remove the flag so it doesn't auto-resume again
+        localStorage.removeItem('autoResumeUserId');
+        
+        // Fill in the user ID and trigger confirmation automatically
+        userIdInput.value = autoResumeUserId;
+        
+        // Trigger confirmation after a brief delay to ensure UI is ready
+        setTimeout(() => {
+          this.handleUserIdConfirmation();
+        }, 100);
+      }
+    }
+
+    // Setup session management button event listeners
+    this.setupSessionManagementButtons();
+  }
+
+  setupSessionManagementButtons() {
+    const resetBtn = document.getElementById('main-reset-experiment-btn');
+    const deleteLastBtn = document.getElementById('main-delete-last-session-btn');
+    const exportBtn = document.getElementById('main-export-data-btn');
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        if (this.experimentUI) {
+          this.experimentUI.handleResetExperiment();
+        }
+      });
+    }
+
+    if (deleteLastBtn) {
+      deleteLastBtn.addEventListener('click', () => {
+        if (this.experimentUI) {
+          this.experimentUI.handleDeleteLastSession();
+        }
+      });
+    }
+
+    if (exportBtn) {
+      exportBtn.addEventListener('click', () => {
+        if (this.experimentUI) {
+          this.experimentUI.handleExportData();
         }
       });
     }
@@ -172,11 +225,11 @@ class GameCoordinator {
         return;
       }
 
-      // Start next session
-      const session = await this.experimentManager.startSession();
+      // Get next session info WITHOUT creating the session yet
+      const sessionInfo = this.experimentManager.getNextSessionInfo();
       
       // Update display elements
-      this.updateSessionDisplay(session);
+      this.updateSessionDisplay(sessionInfo);
       
       // Hide user ID section and show session info
       userIdSection.style.display = 'none';
@@ -188,19 +241,18 @@ class GameCoordinator {
         gameStartButton.style.display = 'block';
       }
 
+      // Show session management buttons
+      const sessionManagement = document.getElementById('session-management');
+      if (sessionManagement) {
+        sessionManagement.style.display = 'block';
+      }
+
       // Clear any errors
       userIdError.textContent = '';
 
-      // Dispatch experiment session started event
-      window.dispatchEvent(new CustomEvent('experimentSessionStarted', {
-        detail: {
-          sessionId: session.sessionId,
-          speedConfig: session.speedConfig,
-          completedSessions: completedSessions
-        }
-      }));
+      // Don't dispatch experimentSessionStarted yet - wait until PLAY is clicked
 
-      console.log('[GameCoordinator] User ID confirmed, session started:', session);
+      console.log('[GameCoordinator] User ID confirmed, ready for session:', sessionInfo.sessionId);
 
     } catch (error) {
       console.error('[GameCoordinator] Error confirming user ID:', error);
@@ -263,6 +315,146 @@ class GameCoordinator {
 
     if (sessionInfoSection) {
       sessionInfoSection.style.display = 'none';
+    }
+  }
+
+  async handleResetExperiment() {
+    try {
+      // Show confirmation dialog
+      const confirmed = confirm(
+        '⚠️ Are you sure you want to reset the experiment?\n\n' +
+        'This will:\n' +
+        '• Delete ALL session data\n' +
+        '• Clear the user ID\n' +
+        '• Remove data from both local storage and cloud database\n' +
+        '• Start completely over\n\n' +
+        'This action cannot be undone!'
+      );
+
+      if (!confirmed) {
+        console.log('[GameCoordinator] Reset cancelled by user');
+        return;
+      }
+
+      console.log('[GameCoordinator] 🔄 Starting experiment reset...');
+
+      // Reset experiment data
+      if (this.experimentManager) {
+        const resetSuccess = await this.experimentManager.resetExperiment();
+        if (!resetSuccess) {
+          throw new Error('Failed to reset experiment data');
+        }
+      }
+
+      // Reset UI state to initial user ID input
+      this.resetUIToInitialState();
+
+      console.log('[GameCoordinator] ✅ Experiment reset completed successfully');
+
+    } catch (error) {
+      console.error('[GameCoordinator] ❌ Error during experiment reset:', error);
+      alert('Error resetting experiment: ' + error.message);
+    }
+  }
+
+  resetUIToInitialState() {
+    try {
+      console.log('[GameCoordinator] 🔄 Starting UI reset to initial state...');
+
+      // First, completely remove any experiment UI interfaces
+      const experimentInterface = document.getElementById('experiment-interface');
+      if (experimentInterface) {
+        console.log('[GameCoordinator] 🗑️ Removing experiment interface');
+        experimentInterface.remove();
+      }
+
+      // Stop any running game components
+      if (this.gameEngine && this.gameEngine.running) {
+        console.log('[GameCoordinator] ⏹️ Stopping game engine');
+        this.gameEngine.stop();
+      }
+
+      // Hide the game UI and show main menu
+      const gameUI = document.getElementById('game-ui');
+      const mainMenu = document.getElementById('main-menu-container');
+      
+      if (gameUI) {
+        gameUI.style.display = 'none';
+        console.log('[GameCoordinator] 🫥 Hidden game UI');
+      }
+      
+      if (mainMenu) {
+        mainMenu.style.display = 'flex';
+        console.log('[GameCoordinator] 👁️ Shown main menu');
+      }
+
+      // Get UI elements
+      const userIdSection = document.getElementById('user-id-section');
+      const sessionInfoSection = document.getElementById('session-info-section');
+      const gameStartButton = document.getElementById('game-start');
+
+      // Reset user ID section to initial state
+      if (userIdSection) {
+        userIdSection.innerHTML = `
+          <h3 class='experiment-title'>Pac-Man Speed Research Study</h3>
+          <p class='experiment-description'>Help us understand how speed affects gameplay</p>
+          <div class='user-id-input-container'>
+            <label for='main-user-id-input' class='user-id-label'>Enter your User ID:</label>
+            <input type='text' id='main-user-id-input' class='user-id-input' placeholder='Enter unique identifier' />
+            <button id='confirm-user-id' class='confirm-user-id-btn'>Continue</button>
+          </div>
+          <div id='user-id-error' class='user-id-error'></div>
+        `;
+        userIdSection.style.display = 'block';
+        console.log('[GameCoordinator] ✅ Reset user ID section');
+      }
+
+      // Hide session info section
+      if (sessionInfoSection) {
+        sessionInfoSection.style.display = 'none';
+        console.log('[GameCoordinator] 🫥 Hidden session info section');
+      }
+
+      // Hide game start button
+      if (gameStartButton) {
+        gameStartButton.style.display = 'none';
+        console.log('[GameCoordinator] 🫥 Hidden game start button');
+      }
+
+      // Re-setup user ID flow event listeners
+      this.setupUserIdFlow();
+
+      // Reset game state flags for fresh initialization
+      this.firstGame = true;
+      console.log('[GameCoordinator] 🔄 Reset firstGame flag to true');
+
+      // Reinitialize experiment system to ensure clean state
+      if (this.experimentManager) {
+        // Clear references to old experiment manager
+        this.experimentManager = null;
+        this.sessionManager = null;
+        this.progressController = null;
+        this.dataManager = null;
+        this.exportManager = null;
+        this.visualizationDashboard = null;
+        this.experimentUI = null;
+        this.speedController = null;
+        this.metricsCollector = null;
+        console.log('[GameCoordinator] 🧹 Cleared experiment references');
+      }
+
+      // Reinitialize experiment system after short delay
+      setTimeout(() => {
+        this.initializeExperiment();
+        console.log('[GameCoordinator] 🔄 Reinitialized experiment system');
+      }, 100);
+
+      console.log('[GameCoordinator] ✅ UI reset to initial state completed');
+    } catch (error) {
+      console.error('[GameCoordinator] ❌ Error during UI reset:', error);
+      // Fallback: reload page
+      console.log('[GameCoordinator] 🔄 UI reset failed, reloading page...');
+      window.location.reload();
     }
   }
 
@@ -359,7 +551,7 @@ class GameCoordinator {
   /**
    * Reveals the game underneath the loading covers and starts gameplay
    */
-  startButtonClick() {
+  async startButtonClick() {
     // Check if experiment is properly initialized
     if (!this.experimentManager.userId) {
       console.warn('[GameCoordinator] Cannot start game - no user ID set');
@@ -367,11 +559,32 @@ class GameCoordinator {
       return;
     }
 
-    // Check if experiment session is active
+    // Start the session if not already active (this creates the Supabase entry)
     if (!this.experimentManager.isExperimentActive) {
-      console.warn('[GameCoordinator] Cannot start game - no active experiment session');
-      alert('Please start an experiment session first.');
-      return;
+      try {
+        console.log('[GameCoordinator] Starting experiment session...');
+        const session = await this.experimentManager.startSession();
+        console.log('[GameCoordinator] Session started:', session.sessionId);
+      } catch (error) {
+        console.error('[GameCoordinator] Failed to start session:', error);
+        alert('Failed to start session: ' + error.message);
+        return;
+      }
+    }
+
+    // Always dispatch experiment session started event when game starts
+    window.dispatchEvent(new CustomEvent('experimentSessionStarted', {
+      detail: {
+        sessionId: this.experimentManager.currentSession?.sessionId,
+        speedConfig: this.experimentManager.currentSession?.speedConfig,
+        completedSessions: this.experimentManager.getCompletedSessionsCount() - 1
+      }
+    }));
+
+    // Hide session management buttons during gameplay
+    const sessionManagement = document.getElementById('session-management');
+    if (sessionManagement) {
+      sessionManagement.style.display = 'none';
     }
 
     this.leftCover.style.left = '-50%';
@@ -1425,7 +1638,7 @@ class GameCoordinator {
       this.updateSessionDisplay(session);
       
       // Show the main menu with session info already populated
-      this.reset();
+      // Don't call reset() here - it should only be called when game starts
       this.mainMenu.style.opacity = 1;
       this.gameStartButton.disabled = false;
       this.mainMenu.style.visibility = 'visible';

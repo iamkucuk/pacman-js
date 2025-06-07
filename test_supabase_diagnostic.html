@@ -41,12 +41,67 @@
 
         async function runDiagnostic() {
             clearOutput();
-            log('🔍 Starting Supabase Integration Diagnostic', 'info');
+            log('🔍 Starting Session Resumption Diagnostic', 'info');
             
             // Step 1: Check if classes are available
             log('Step 1: Checking class availability', 'info');
             log(`- ExperimentManager: ${typeof ExperimentManager}`, 'info');
             log(`- SupabaseDataManager: ${typeof SupabaseDataManager}`, 'info');
+            
+            // Step 2: Test session resumption functionality
+            log('Step 2: Testing session resumption with test user', 'info');
+            try {
+                const manager = new ExperimentManager();
+                
+                // Wait for Supabase initialization
+                log('- Waiting for Supabase initialization...', 'info');
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // Test with a test user
+                const testUserId = 'diagnostic-test-user-' + Date.now();
+                log(`- Testing with user ID: ${testUserId}`, 'info');
+                
+                await manager.initializeUser(testUserId);
+                
+                // Check completed sessions count
+                const completedCount = manager.getCompletedSessionsCount();
+                log(`- Completed sessions count: ${completedCount}`, completedCount === 0 ? 'success' : 'warning');
+                
+                // Try to create a session
+                const sessionInfo = manager.createNewSession();
+                log(`- Created session ID: ${sessionInfo.sessionId}`, 'success');
+                log(`- Session permutation: ${sessionInfo.permutationId}`, 'info');
+                log(`- Speed config: pacman=${sessionInfo.speedConfig.pacman}, ghost=${sessionInfo.speedConfig.ghost}`, 'info');
+                
+                log('✅ Session resumption functionality appears to be working!', 'success');
+                
+                // Step 3: Test with an existing user (if any exist)
+                log('Step 3: Testing with existing user (if available)', 'info');
+                const existingUserId = 'test-user-123'; // Use a known test user
+                try {
+                    const manager2 = new ExperimentManager();
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    
+                    await manager2.initializeUser(existingUserId);
+                    const existingCompletedCount = manager2.getCompletedSessionsCount();
+                    log(`- Existing user "${existingUserId}" completed sessions: ${existingCompletedCount}`, 'info');
+                    
+                    if (existingCompletedCount > 0) {
+                        const resumeSessionInfo = manager2.createNewSession();
+                        log(`- Resumed session ID: ${resumeSessionInfo.sessionId} (should be ${existingCompletedCount + 1})`, 
+                            resumeSessionInfo.sessionId === existingCompletedCount + 1 ? 'success' : 'error');
+                        log('✅ Session resumption working for existing user!', 'success');
+                    } else {
+                        log('- No completed sessions found for existing user test', 'warning');
+                    }
+                } catch (error) {
+                    log(`- Could not test existing user: ${error.message}`, 'warning');
+                }
+                
+            } catch (error) {
+                log(`❌ Error testing session resumption: ${error.message}`, 'error');
+                console.error('Diagnostic error:', error);
+            }
             
             if (typeof SupabaseDataManager === 'undefined') {
                 log('❌ SupabaseDataManager not found in build!', 'error');

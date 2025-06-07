@@ -526,3 +526,53 @@ Enhanced Supabase integration with comprehensive debugging and state management 
 - Improved logging will help identify remaining issues
 
 ---
+
+### [2025-01-06] - Fixed Session Resumption Issue with Supabase Integration
+**Files Modified:** 
+- `app/scripts/experiment/experimentManager.js:144-157` - Fixed loadUserDataFromSupabase to properly load completed sessions count
+- `test_supabase_diagnostic.html:42-104` - Enhanced diagnostic test to verify session resumption functionality
+- `build/app.js` - Compiled JavaScript with session resumption fix
+
+**Type:** Bug Fix
+
+**Severity:** High
+
+**Description:**
+Fixed critical bug where sessions would always start from the beginning instead of resuming from the participant's last completed session when using Supabase integration. The issue was that `loadUserDataFromSupabase()` only loaded the session order but never loaded the metrics array, causing `getCompletedSessionsCount()` to always return 0.
+
+**Root Cause:**
+- `loadUserDataFromSupabase()` method only set `this.sessionOrder` but never set `this.metrics`
+- `getCompletedSessionsCount()` returns `this.metrics.length`, which was always 0
+- This caused all users to start from session 1 instead of resuming from their next session
+
+**Solution:**
+- Updated `loadUserDataFromSupabase()` to retrieve completed sessions count from Supabase
+- Create a metrics array with placeholder objects to maintain compatibility: `this.metrics = new Array(completedSessionsCount).fill(null).map(() => ({}))`
+- Added comprehensive logging to track session resumption data
+- Enhanced diagnostic test to verify resumption functionality
+
+**Impact:**
+- ✅ Session resumption now works correctly for participants using Supabase
+- ✅ Participants who completed sessions 1-3 will now properly resume from session 4
+- ✅ Backward compatibility maintained with localStorage fallback
+- ✅ No changes required for participants - resumption is automatic
+- ✅ Enhanced debugging information for troubleshooting
+
+**Technical Details:**
+- Uses `SupabaseDataManager.getUserData()` to get both session order and completed sessions count
+- Creates placeholder metrics array to match expected behavior: `[{}, {}, {}]` for 3 completed sessions
+- Maintains compatibility with existing `getCompletedSessionsCount()` logic
+- Preserves session order randomization per participant
+
+**Related Issues:**
+- User report that participants always started from session 1 after implementing Supabase
+- Session resumption worked with localStorage but broke with Supabase integration
+- Need for participants to continue from their last completed session
+
+**Testing:**
+- Created enhanced diagnostic test in `test_supabase_diagnostic.html`
+- Verified session resumption for new users (starts at session 1)
+- Verified session resumption for existing users (continues from last completed + 1)
+- Confirmed backward compatibility with localStorage fallback
+
+---

@@ -402,6 +402,13 @@ class ExperimentUI {
     const progressInfoDiv = document.getElementById('progress-info');
 
     if (sessionInfoDiv) {
+      // Debug logging for session display
+      console.log('[ExperimentUI] Session display debug:');
+      console.log('- sessionInfo:', sessionInfo);
+      console.log('- sessionInfo.sessionId:', sessionInfo.sessionId);
+      console.log('- completedSessions from info:', sessionInfo.completedSessions);
+      console.log('- Direct completedSessions call:', this.experimentManager.getCompletedSessionsCount());
+      
       sessionInfoDiv.innerHTML = `
         <strong>User:</strong> ${this.experimentManager.userId}<br>
         <strong>Session:</strong> ${sessionInfo.sessionId}/9
@@ -510,6 +517,11 @@ class ExperimentUI {
 
     const sessionInfo = this.experimentManager.getCurrentSessionInfo();
     const sessionId = sessionInfo ? sessionInfo.sessionId : '?';
+    
+    // Debug logging for live metrics display
+    console.log('[ExperimentUI] Live metrics debug:');
+    console.log('- sessionInfo from getCurrentSessionInfo:', sessionInfo);
+    console.log('- sessionId being displayed:', sessionId);
 
     metricsDiv.innerHTML = `
       <strong>📊 Session ${sessionId} Metrics</strong><br>

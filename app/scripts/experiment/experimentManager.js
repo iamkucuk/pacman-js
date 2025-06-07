@@ -27,6 +27,7 @@ class ExperimentManager {
     this.useSupabase = true; // Enable Supabase by default
     this.supabaseInitializing = false;
     this.supabaseInitialized = false;
+    this.dataLoadedFromSupabase = false; // Track if we successfully loaded from Supabase
     this.initializeSupabase();
   }
 
@@ -117,10 +118,14 @@ class ExperimentManager {
     if (this.useSupabase && this.supabaseManager && this.supabaseInitialized) {
       try {
         console.log('[ExperimentManager] 🗃️ Loading user data from Supabase...');
-        await this.loadUserDataFromSupabase();
+        const supabaseSuccess = await this.loadUserDataFromSupabase();
+        if (!supabaseSuccess) {
+          console.log('[ExperimentManager] 📂 Supabase returned no data, checking localStorage...');
+          this.loadUserData();
+        }
       } catch (error) {
         console.error('[ExperimentManager] Supabase user init failed:', error);
-        // Fallback to localStorage
+        // Fallback to localStorage only if Supabase completely failed
         console.log('[ExperimentManager] 📂 Falling back to localStorage...');
         this.loadUserData();
       }
@@ -142,12 +147,21 @@ class ExperimentManager {
       const userData = await this.supabaseManager.getUserData(this.userId);
       if (userData) {
         this.sessionOrder = userData.sessionOrder || [];
+        // Create metrics array based on completed sessions count
+        // Each completed session adds one entry to maintain compatibility
+        this.metrics = new Array(userData.completedSessionsCount).fill(null).map(() => ({}));
         console.log('[ExperimentManager] 📖 User data loaded from Supabase');
+        console.log('[ExperimentManager] 📊 Completed sessions:', userData.completedSessionsCount);
+        console.log('[ExperimentManager] 📋 Session order:', this.sessionOrder);
+        console.log('[ExperimentManager] 📋 Created metrics array:', this.metrics);
+        console.log('[ExperimentManager] 📋 Metrics array length:', this.metrics.length);
+        this.dataLoadedFromSupabase = true; // Mark that we successfully loaded from Supabase
         return true;
       }
       // Initialize new user in Supabase
       await this.supabaseManager.initializeUser(this.userId, []);
       this.sessionOrder = [];
+      this.metrics = [];
       return true;
     } catch (error) {
       console.error('[ExperimentManager] Error loading from Supabase:', error);
@@ -189,6 +203,8 @@ class ExperimentManager {
     // Debug logging to help identify the issue
     console.log('[ExperimentManager] Debug - sessionOrder:', this.sessionOrder);
     console.log('[ExperimentManager] Debug - completedSessions:', completedSessions);
+    console.log('[ExperimentManager] Debug - metrics array:', this.metrics);
+    console.log('[ExperimentManager] Debug - metrics.length:', this.metrics.length);
 
     const permutationId = this.sessionOrder[completedSessions];
     console.log('[ExperimentManager] Debug - permutationId:', permutationId);
@@ -251,10 +267,21 @@ class ExperimentManager {
     const age = Date.now() - (savedState.lastSaved || savedState.startTime || 0);
     const maxAge = 60 * 60 * 1000; // 1 hour
 
+    // Check if this saved session matches the expected next session
+    const expectedSessionId = this.getCompletedSessionsCount() + 1;
+    const sessionMatches = savedState.sessionId === expectedSessionId;
+
+    console.log('[ExperimentManager] Resume session check:');
+    console.log('- Saved session ID:', savedState.sessionId);
+    console.log('- Expected session ID:', expectedSessionId);
+    console.log('- Session matches:', sessionMatches);
+    console.log('- Age check passed:', age < maxAge);
+
     return age < maxAge
            && savedState.userId === this.userId
            && savedState.sessionId > 0
-           && savedState.sessionId <= 9;
+           && savedState.sessionId <= 9
+           && sessionMatches; // Only resume if it's the correct session
   }
 
   resumeSession(savedState) {
@@ -589,6 +616,12 @@ class ExperimentManager {
     if (!this.userId) {
       console.warn('[ExperimentManager] Cannot load user data - no userId');
       return false;
+    }
+
+    // Don't override Supabase data if we successfully loaded from there
+    if (this.dataLoadedFromSupabase) {
+      console.log('[ExperimentManager] Skipping localStorage - already loaded from Supabase');
+      return true;
     }
 
     try {

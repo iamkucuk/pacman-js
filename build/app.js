@@ -3749,6 +3749,7 @@ class ExperimentManager {
     this.useSupabase = true; // Enable Supabase by default
     this.supabaseInitializing = false;
     this.supabaseInitialized = false;
+    this.dataLoadedFromSupabase = false; // Track if we successfully loaded from Supabase
     this.initializeSupabase();
   }
 
@@ -3757,20 +3758,20 @@ class ExperimentManager {
       console.log('[ExperimentManager] ⏳ Supabase already initializing, waiting...');
       return;
     }
-    
+
     this.supabaseInitializing = true;
-    
+
     try {
       console.log('[ExperimentManager] 🔍 Checking SupabaseDataManager availability...');
       console.log('[ExperimentManager] typeof SupabaseDataManager:', typeof SupabaseDataManager);
-      
+
       if (typeof SupabaseDataManager !== 'undefined') {
         console.log('[ExperimentManager] ✨ Creating SupabaseDataManager instance...');
         this.supabaseManager = new SupabaseDataManager();
-        
+
         console.log('[ExperimentManager] 🚀 Initializing Supabase connection...');
         const initialized = await this.supabaseManager.initialize();
-        
+
         if (initialized) {
           console.log('[ExperimentManager] 🚀 Supabase integration enabled');
           console.log('[ExperimentManager] Supabase URL:', this.supabaseManager.supabaseUrl);
@@ -3795,15 +3796,15 @@ class ExperimentManager {
   async waitForSupabaseInitialization() {
     if (this.supabaseInitialized) return true;
     if (!this.useSupabase) return false;
-    
+
     // Wait up to 10 seconds for initialization
     const timeout = 10000;
     const startTime = Date.now();
-    
+
     while (this.supabaseInitializing && (Date.now() - startTime) < timeout) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
-    
+
     return this.supabaseInitialized;
   }
 
@@ -3839,10 +3840,14 @@ class ExperimentManager {
     if (this.useSupabase && this.supabaseManager && this.supabaseInitialized) {
       try {
         console.log('[ExperimentManager] 🗃️ Loading user data from Supabase...');
-        await this.loadUserDataFromSupabase();
+        const supabaseSuccess = await this.loadUserDataFromSupabase();
+        if (!supabaseSuccess) {
+          console.log('[ExperimentManager] 📂 Supabase returned no data, checking localStorage...');
+          this.loadUserData();
+        }
       } catch (error) {
         console.error('[ExperimentManager] Supabase user init failed:', error);
-        // Fallback to localStorage
+        // Fallback to localStorage only if Supabase completely failed
         console.log('[ExperimentManager] 📂 Falling back to localStorage...');
         this.loadUserData();
       }
@@ -3864,14 +3869,22 @@ class ExperimentManager {
       const userData = await this.supabaseManager.getUserData(this.userId);
       if (userData) {
         this.sessionOrder = userData.sessionOrder || [];
+        // Create metrics array based on completed sessions count
+        // Each completed session adds one entry to maintain compatibility
+        this.metrics = new Array(userData.completedSessionsCount).fill(null).map(() => ({}));
         console.log('[ExperimentManager] 📖 User data loaded from Supabase');
-        return true;
-      } else {
-        // Initialize new user in Supabase
-        await this.supabaseManager.initializeUser(this.userId, []);
-        this.sessionOrder = [];
+        console.log('[ExperimentManager] 📊 Completed sessions:', userData.completedSessionsCount);
+        console.log('[ExperimentManager] 📋 Session order:', this.sessionOrder);
+        console.log('[ExperimentManager] 📋 Created metrics array:', this.metrics);
+        console.log('[ExperimentManager] 📋 Metrics array length:', this.metrics.length);
+        this.dataLoadedFromSupabase = true; // Mark that we successfully loaded from Supabase
         return true;
       }
+      // Initialize new user in Supabase
+      await this.supabaseManager.initializeUser(this.userId, []);
+      this.sessionOrder = [];
+      this.metrics = [];
+      return true;
     } catch (error) {
       console.error('[ExperimentManager] Error loading from Supabase:', error);
       return false;
@@ -3912,17 +3925,19 @@ class ExperimentManager {
     // Debug logging to help identify the issue
     console.log('[ExperimentManager] Debug - sessionOrder:', this.sessionOrder);
     console.log('[ExperimentManager] Debug - completedSessions:', completedSessions);
-    
+    console.log('[ExperimentManager] Debug - metrics array:', this.metrics);
+    console.log('[ExperimentManager] Debug - metrics.length:', this.metrics.length);
+
     const permutationId = this.sessionOrder[completedSessions];
     console.log('[ExperimentManager] Debug - permutationId:', permutationId);
-    
+
     if (permutationId === undefined) {
       throw new Error('Session order not properly initialized. Please refresh and try again.');
     }
-    
+
     const config = this.PERMUTATIONS[permutationId];
     console.log('[ExperimentManager] Debug - config:', config);
-    
+
     if (!config) {
       throw new Error(`Invalid permutation ID: ${permutationId}`);
     }
@@ -3974,10 +3989,21 @@ class ExperimentManager {
     const age = Date.now() - (savedState.lastSaved || savedState.startTime || 0);
     const maxAge = 60 * 60 * 1000; // 1 hour
 
+    // Check if this saved session matches the expected next session
+    const expectedSessionId = this.getCompletedSessionsCount() + 1;
+    const sessionMatches = savedState.sessionId === expectedSessionId;
+
+    console.log('[ExperimentManager] Resume session check:');
+    console.log('- Saved session ID:', savedState.sessionId);
+    console.log('- Expected session ID:', expectedSessionId);
+    console.log('- Session matches:', sessionMatches);
+    console.log('- Age check passed:', age < maxAge);
+
     return age < maxAge
            && savedState.userId === this.userId
            && savedState.sessionId > 0
-           && savedState.sessionId <= 9;
+           && savedState.sessionId <= 9
+           && sessionMatches; // Only resume if it's the correct session
   }
 
   resumeSession(savedState) {
@@ -4246,9 +4272,7 @@ class ExperimentManager {
 
   getDetailedCount(eventType) {
     if (!this.currentMetrics || !this.currentMetrics.events) return 0;
-    return this.currentMetrics.events.filter(event => 
-      event.type === 'pelletEaten' && event.data && event.data.type === eventType
-    ).length;
+    return this.currentMetrics.events.filter(event => event.type === 'pelletEaten' && event.data && event.data.type === eventType).length;
   }
 
   getCompletedSessionsCount() {
@@ -4314,6 +4338,12 @@ class ExperimentManager {
     if (!this.userId) {
       console.warn('[ExperimentManager] Cannot load user data - no userId');
       return false;
+    }
+
+    // Don't override Supabase data if we successfully loaded from there
+    if (this.dataLoadedFromSupabase) {
+      console.log('[ExperimentManager] Skipping localStorage - already loaded from Supabase');
+      return true;
     }
 
     try {
@@ -4584,7 +4614,7 @@ class ExperimentManager {
     try {
       const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
       const link = document.createElement('a');
-      
+
       if (link.download !== undefined) {
         const url = URL.createObjectURL(blob);
         link.setAttribute('href', url);
@@ -5011,7 +5041,7 @@ class ExperimentUI {
 
     // Reset metrics for new session
     this.resetMetricsDisplay();
-    
+
     // Update all the session information and start metrics display
     this.updateSessionDisplay();
     this.startMetricsDisplay();
@@ -5054,6 +5084,13 @@ class ExperimentUI {
     const progressInfoDiv = document.getElementById('progress-info');
 
     if (sessionInfoDiv) {
+      // Debug logging for session display
+      console.log('[ExperimentUI] Session display debug:');
+      console.log('- sessionInfo:', sessionInfo);
+      console.log('- sessionInfo.sessionId:', sessionInfo.sessionId);
+      console.log('- completedSessions from info:', sessionInfo.completedSessions);
+      console.log('- Direct completedSessions call:', this.experimentManager.getCompletedSessionsCount());
+      
       sessionInfoDiv.innerHTML = `
         <strong>User:</strong> ${this.experimentManager.userId}<br>
         <strong>Session:</strong> ${sessionInfo.sessionId}/9
@@ -5112,7 +5149,7 @@ class ExperimentUI {
 
     // eslint-disable-next-line no-console
     console.log('[ExperimentUI] Resetting metrics display for new session');
-    
+
     const metricsDiv = document.getElementById('metrics-display');
     if (metricsDiv) {
       // Reset to initial state showing zeros
@@ -5162,6 +5199,11 @@ class ExperimentUI {
 
     const sessionInfo = this.experimentManager.getCurrentSessionInfo();
     const sessionId = sessionInfo ? sessionInfo.sessionId : '?';
+    
+    // Debug logging for live metrics display
+    console.log('[ExperimentUI] Live metrics debug:');
+    console.log('- sessionInfo from getCurrentSessionInfo:', sessionInfo);
+    console.log('- sessionId being displayed:', sessionId);
 
     metricsDiv.innerHTML = `
       <strong>📊 Session ${sessionId} Metrics</strong><br>
@@ -7641,7 +7683,7 @@ class SpeedController {
 
   bindEvents() {
     console.log('[SpeedController] 🎧 Binding to speedConfigChanged event');
-    
+
     window.addEventListener('speedConfigChanged', (e) => {
       console.log('[SpeedController] 📡 RECEIVED speedConfigChanged event!', e.detail);
       this.applySpeedConfiguration(e.detail);
@@ -7671,7 +7713,7 @@ class SpeedController {
     if (this.originalSpeeds.pacman === null) {
       console.log('[SpeedController] ⏳ Original speeds not stored yet, storing now...');
       this.storeOriginalSpeeds();
-      
+
       // If still not ready after attempting to store, retry in 1 second
       if (this.originalSpeeds.pacman === null) {
         console.log('[SpeedController] ⏰ Retrying speed application in 1 second...');
@@ -7709,7 +7751,7 @@ class SpeedController {
     // Check if Pac-Man speed has been reset
     const expectedPacmanSpeed = this.originalSpeeds.pacman * this.currentMultipliers.pacman;
     const actualPacmanSpeed = this.gameCoordinator.pacman.velocityPerMs;
-    
+
     if (Math.abs(actualPacmanSpeed - expectedPacmanSpeed) > 0.001) {
       console.log(`[SpeedController] 🔄 Pac-Man speed drift detected! Expected: ${expectedPacmanSpeed}, Actual: ${actualPacmanSpeed}, Reapplying...`);
       this.applyPacmanSpeed(this.currentMultipliers.pacman);
@@ -7722,7 +7764,7 @@ class SpeedController {
         if (originalSpeeds) {
           const expectedSpeed = originalSpeeds.defaultSpeed * this.currentMultipliers.ghost;
           const actualSpeed = ghost.velocityPerMs;
-          
+
           if (Math.abs(actualSpeed - expectedSpeed) > 0.001) {
             console.log(`[SpeedController] 🔄 ${ghost.name} speed drift detected! Expected: ${expectedSpeed}, Actual: ${actualSpeed}, Reapplying...`);
             // Reapply all ghost speeds
@@ -7838,7 +7880,7 @@ class SpeedController {
     console.log('=== SPEED CONTROLLER DEBUG ===');
     console.log('Is Initialized:', this.isInitialized);
     console.log('Current Multipliers:', this.currentMultipliers);
-    
+
     if (this.gameCoordinator && this.gameCoordinator.pacman) {
       console.log('Pac-Man Current Speed:', this.gameCoordinator.pacman.velocityPerMs);
       console.log('Pac-Man Original Speed:', this.originalSpeeds.pacman);
@@ -7848,7 +7890,7 @@ class SpeedController {
     }
 
     if (this.gameCoordinator && this.gameCoordinator.ghosts) {
-      this.gameCoordinator.ghosts.forEach(ghost => {
+      this.gameCoordinator.ghosts.forEach((ghost) => {
         console.log(`${ghost.name}:`);
         console.log(`  Current Speed: ${ghost.velocityPerMs}`);
         console.log(`  Default Speed: ${ghost.defaultSpeed}`);

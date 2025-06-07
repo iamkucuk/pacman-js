@@ -3963,7 +3963,44 @@ class ExperimentManager {
     this.supabaseInitializing = false;
     this.supabaseInitialized = false;
     this.dataLoadedFromSupabase = false; // Track if we successfully loaded from Supabase
+    
+    // Database migration detection - clear localStorage if database changed
+    this.checkDatabaseMigration();
     this.initializeSupabase();
+  }
+
+  checkDatabaseMigration() {
+    // Expected database identifier for current deployment
+    const currentDatabaseId = 'kozbxghtgtnoldywzdmg';
+    const storageKey = 'experiment_database_id';
+    
+    try {
+      const storedDatabaseId = localStorage.getItem(storageKey);
+      
+      if (storedDatabaseId && storedDatabaseId !== currentDatabaseId) {
+        console.log('[ExperimentManager] 🔄 Database migration detected!');
+        console.log('[ExperimentManager] Old database:', storedDatabaseId);
+        console.log('[ExperimentManager] New database:', currentDatabaseId);
+        console.log('[ExperimentManager] 🧹 Clearing localStorage for fresh start...');
+        
+        // Clear all experiment-related data
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('experiment_')) {
+            keysToRemove.push(key);
+          }
+        }
+        
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+        console.log('[ExperimentManager] ✅ Cleared', keysToRemove.length, 'localStorage items');
+      }
+      
+      // Update stored database ID
+      localStorage.setItem(storageKey, currentDatabaseId);
+    } catch (error) {
+      console.warn('[ExperimentManager] Database migration check failed:', error);
+    }
   }
 
   async initializeSupabase() {

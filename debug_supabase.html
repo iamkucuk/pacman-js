@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Debug Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        button { margin: 5px; padding: 10px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        #output { margin-top: 20px; font-family: monospace; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>Pac-Man Supabase Connection Debug</h1>
+    
+    <div>
+        <button onclick="testSupabaseConnection()">Test Supabase Connection</button>
+        <button onclick="testUserCreation()">Test User Creation</button>
+        <button onclick="checkLocalStorage()">Check localStorage</button>
+        <button onclick="clearLocalStorage()">Clear localStorage</button>
+        <button onclick="clearOutput()">Clear Output</button>
+    </div>
+
+    <div id="output"></div>
+
+    <script src="build/app.js"></script>
+    <script>
+        function log(message, type = 'info') {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            output.innerHTML += `[${timestamp}] ${message}\n`;
+            console.log(`[${timestamp}] ${message}`);
+        }
+
+        function clearOutput() {
+            document.getElementById('output').innerHTML = '';
+        }
+
+        async function testSupabaseConnection() {
+            log('🔍 Testing Supabase connection...', 'info');
+            
+            try {
+                // Create a SupabaseDataManager instance
+                const manager = new SupabaseDataManager();
+                log(`📝 Supabase URL: ${manager.supabaseUrl}`);
+                
+                // Initialize connection
+                const initialized = await manager.initialize();
+                log(`🔗 Connection initialized: ${initialized}`);
+                
+                if (initialized) {
+                    // Test a simple query
+                    const { data, error } = await manager.supabase
+                        .from('users')
+                        .select('count', { count: 'exact' });
+                    
+                    if (error) {
+                        log(`❌ Query error: ${error.message}`, 'error');
+                    } else {
+                        log(`✅ Successfully connected! User count: ${data.length}`, 'success');
+                    }
+                } else {
+                    log('❌ Failed to initialize Supabase', 'error');
+                }
+            } catch (error) {
+                log(`❌ Connection error: ${error.message}`, 'error');
+            }
+        }
+
+        async function testUserCreation() {
+            log('👤 Testing user creation...', 'info');
+            
+            try {
+                const manager = new SupabaseDataManager();
+                await manager.initialize();
+                
+                const testUserId = 'debug_user_' + Date.now();
+                const sessionOrder = [0,1,2,3,4,5,6,7,8];
+                
+                log(`📝 Creating user: ${testUserId}`);
+                
+                const result = await manager.createUser(testUserId, sessionOrder);
+                
+                if (result.success) {
+                    log(`✅ User created successfully!`, 'success');
+                    
+                    // Clean up test user
+                    await manager.supabase
+                        .from('users')
+                        .delete()
+                        .eq('user_id', testUserId);
+                    
+                    log(`🧹 Test user cleaned up`, 'info');
+                } else {
+                    log(`❌ User creation failed: ${result.error}`, 'error');
+                }
+            } catch (error) {
+                log(`❌ User creation error: ${error.message}`, 'error');
+            }
+        }
+
+        function checkLocalStorage() {
+            log('💾 Checking localStorage...', 'info');
+            
+            const keys = Object.keys(localStorage);
+            if (keys.length === 0) {
+                log('📭 localStorage is empty', 'info');
+            } else {
+                log(`📦 Found ${keys.length} localStorage items:`, 'info');
+                keys.forEach(key => {
+                    const value = localStorage.getItem(key);
+                    if (key.includes('pacman') || key.includes('experiment') || key.includes('user')) {
+                        log(`  ${key}: ${value.substring(0, 100)}${value.length > 100 ? '...' : ''}`, 'info');
+                    } else {
+                        log(`  ${key}: [${value.length} chars]`, 'info');
+                    }
+                });
+            }
+        }
+
+        function clearLocalStorage() {
+            log('🧹 Clearing localStorage...', 'info');
+            const beforeCount = Object.keys(localStorage).length;
+            localStorage.clear();
+            const afterCount = Object.keys(localStorage).length;
+            log(`✅ Cleared ${beforeCount} items, ${afterCount} remaining`, 'success');
+        }
+
+        // Auto-run connection test on page load
+        window.addEventListener('load', () => {
+            setTimeout(testSupabaseConnection, 1000);
+        });
+    </script>
+</body>
+</html>

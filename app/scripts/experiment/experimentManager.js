@@ -564,7 +564,7 @@ class ExperimentManager {
     }
 
     // Save to CSV after session completion
-    this.saveSessionToCSV(this.currentMetrics);
+    // this.saveSessionToCSV(this.currentMetrics); // Disabled - CSV export not needed after each session
 
     await this.saveUserData();
     this.clearCurrentSession();

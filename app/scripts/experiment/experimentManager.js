@@ -21,6 +21,32 @@ class ExperimentManager {
     this.currentMetrics = null;
     this.gameStartTime = null;
     this.isExperimentActive = false;
+
+    // Supabase integration
+    this.supabaseManager = null;
+    this.useSupabase = true; // Enable Supabase by default
+    this.initializeSupabase();
+  }
+
+  async initializeSupabase() {
+    try {
+      if (typeof SupabaseDataManager !== 'undefined') {
+        this.supabaseManager = new SupabaseDataManager();
+        const initialized = await this.supabaseManager.initialize();
+        if (initialized) {
+          console.log('[ExperimentManager] 🚀 Supabase integration enabled');
+        } else {
+          console.warn('[ExperimentManager] Supabase init failed, using localStorage');
+          this.useSupabase = false;
+        }
+      } else {
+        console.warn('[ExperimentManager] SupabaseDataManager not found, using localStorage');
+        this.useSupabase = false;
+      }
+    } catch (error) {
+      console.error('[ExperimentManager] Supabase initialization error:', error);
+      this.useSupabase = false;
+    }
   }
 
   generatePermutations() {
@@ -41,17 +67,49 @@ class ExperimentManager {
     return permutations;
   }
 
-  initializeUser(userId) {
+  async initializeUser(userId) {
     if (!userId || userId.trim() === '') {
       throw new Error('User ID is required');
     }
 
     this.userId = userId.trim();
-    this.loadUserData();
+
+    if (this.useSupabase && this.supabaseManager) {
+      try {
+        await this.loadUserDataFromSupabase();
+      } catch (error) {
+        console.error('[ExperimentManager] Supabase user init failed:', error);
+        // Fallback to localStorage
+        this.loadUserData();
+      }
+    } else {
+      this.loadUserData();
+    }
 
     if (this.sessionOrder.length === 0) {
       this.sessionOrder = this.generateRandomizedOrder();
-      this.saveUserData();
+      await this.saveUserData();
+    }
+  }
+
+  async loadUserDataFromSupabase() {
+    if (!this.supabaseManager) return false;
+
+    try {
+      const userData = await this.supabaseManager.getUserData(this.userId);
+      if (userData) {
+        this.sessionOrder = userData.sessionOrder || [];
+        console.log('[ExperimentManager] 📖 User data loaded from Supabase');
+        return true;
+      } else {
+        // Initialize new user in Supabase
+        await this.supabaseManager.initializeUser(this.userId, []);
+        this.sessionOrder = [];
+        return true;
+      }
+    } catch (error) {
+      console.error('[ExperimentManager] Error loading from Supabase:', error);
+      return false;
     }
   }
 
@@ -69,7 +127,7 @@ class ExperimentManager {
     return order;
   }
 
-  startSession() {
+  async startSession() {
     console.log('[ExperimentManager] 🟢 START SESSION CALLED');
     if (!this.userId) {
       throw new Error('User ID must be set before starting session');
@@ -114,6 +172,16 @@ class ExperimentManager {
     this.gameplayPausedTime = 0; // Total time paused
     this.lastPauseStart = null;
     this.isExperimentActive = true;
+
+    // Create session in Supabase
+    if (this.useSupabase && this.supabaseManager) {
+      try {
+        await this.supabaseManager.createSession(this.currentSession);
+        console.log('[ExperimentManager] 📊 Session created in Supabase');
+      } catch (error) {
+        console.error('[ExperimentManager] Failed to create Supabase session:', error);
+      }
+    }
 
     console.log('[ExperimentManager] 🎯 About to apply speed configuration:', config);
     this.applySpeedConfiguration(config);
@@ -185,7 +253,7 @@ class ExperimentManager {
     }
   }
 
-  logEvent(type, data = {}) {
+  async logEvent(type, data = {}) {
     if (!this.isExperimentActive || !this.currentMetrics) {
       console.warn('[ExperimentManager] Cannot log event - experiment not active');
       return false;
@@ -201,12 +269,22 @@ class ExperimentManager {
         type,
         time: Date.now() - this.gameStartTime,
         timestamp: new Date(),
-        ...data,
+        userId: this.userId,
+        data,
       };
 
       this.currentMetrics.events.push(event);
       this.updateSummary(type, data);
       this.saveCurrentSession();
+
+      // Log to Supabase
+      if (this.useSupabase && this.supabaseManager) {
+        try {
+          await this.supabaseManager.logEvent(event);
+        } catch (error) {
+          console.error('[ExperimentManager] Failed to log event to Supabase:', error);
+        }
+      }
 
       return true;
     } catch (error) {
@@ -330,7 +408,7 @@ class ExperimentManager {
     return Math.max(0, totalTime);
   }
 
-  endSession() {
+  async endSession() {
     if (!this.isExperimentActive || !this.currentMetrics) return;
 
     // Ensure timer is properly stopped and calculate final time
@@ -340,6 +418,29 @@ class ExperimentManager {
 
     this.currentMetrics.summary.gameTime = this.getGameplayTime();
     this.metrics.push(this.currentMetrics);
+
+    // Complete session in Supabase
+    if (this.useSupabase && this.supabaseManager) {
+      try {
+        // Update session summary with final metrics
+        await this.supabaseManager.updateSessionSummary({
+          totalGhostsEaten: this.currentMetrics.summary.totalGhostsEaten,
+          totalPelletsEaten: this.currentMetrics.summary.totalPelletsEaten,
+          totalPacdotsEaten: this.getDetailedCount('pacdot'),
+          totalPowerPelletsEaten: this.getDetailedCount('powerPellet'),
+          totalFruitsEaten: this.getDetailedCount('fruit'),
+          totalDeaths: this.currentMetrics.summary.totalDeaths,
+          successfulTurns: this.currentMetrics.summary.successfulTurns,
+          totalTurns: this.currentMetrics.summary.totalTurns,
+        });
+
+        // Mark session as completed
+        await this.supabaseManager.completeSession(this.currentMetrics.summary.gameTime);
+        console.log('[ExperimentManager] ✅ Session completed in Supabase');
+      } catch (error) {
+        console.error('[ExperimentManager] Failed to complete Supabase session:', error);
+      }
+    }
 
     // Save to CSV after session completion
     this.saveSessionToCSV(this.currentMetrics);
@@ -353,6 +454,13 @@ class ExperimentManager {
     this.gameplayStarted = false;
     this.gameplayPausedTime = 0;
     this.lastPauseStart = null;
+  }
+
+  getDetailedCount(eventType) {
+    if (!this.currentMetrics || !this.currentMetrics.events) return 0;
+    return this.currentMetrics.events.filter(event => 
+      event.type === 'pelletEaten' && event.data && event.data.type === eventType
+    ).length;
   }
 
   getCompletedSessionsCount() {
@@ -374,7 +482,7 @@ class ExperimentManager {
     };
   }
 
-  saveUserData() {
+  async saveUserData() {
     if (!this.userId) {
       console.warn('[ExperimentManager] Cannot save user data - no userId');
       return false;
@@ -395,7 +503,18 @@ class ExperimentManager {
         userData.metrics = userData.metrics.slice(-5); // Keep only last 5 sessions
       }
 
+      // Save to localStorage for backward compatibility
       localStorage.setItem(`experiment_${this.userId}`, JSON.stringify(userData));
+
+      // Update session order in Supabase
+      if (this.useSupabase && this.supabaseManager) {
+        try {
+          await this.supabaseManager.updateUserSessionOrder(this.userId, this.sessionOrder);
+        } catch (error) {
+          console.error('[ExperimentManager] Failed to update Supabase session order:', error);
+        }
+      }
+
       return true;
     } catch (error) {
       console.error('[ExperimentManager] Error saving user data:', error);
@@ -629,6 +748,105 @@ class ExperimentManager {
     return this.downloadCSV(csvData, filename);
   }
 
+  /**
+   * Export user data from Supabase for research analysis
+   */
+  async exportSupabaseData() {
+    if (!this.useSupabase || !this.supabaseManager) {
+      console.warn('[ExperimentManager] Supabase not available');
+      return null;
+    }
+
+    try {
+      const data = await this.supabaseManager.exportUserData(this.userId);
+      if (data) {
+        const filename = `pacman_supabase_${this.userId}_${new Date().toISOString().split('T')[0]}.json`;
+        this.downloadJSON(JSON.stringify(data, null, 2), filename);
+        console.log('[ExperimentManager] ✅ Supabase data exported:', filename);
+        return data;
+      }
+      return null;
+    } catch (error) {
+      console.error('[ExperimentManager] Error exporting Supabase data:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get aggregated research data (for researchers)
+   */
+  async getResearchData(filters = {}) {
+    if (!this.useSupabase || !this.supabaseManager) {
+      console.warn('[ExperimentManager] Supabase not available');
+      return null;
+    }
+
+    try {
+      return await this.supabaseManager.getResearchData(filters);
+    } catch (error) {
+      console.error('[ExperimentManager] Error getting research data:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Download JSON data
+   */
+  downloadJSON(jsonContent, filename) {
+    try {
+      const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+      const link = document.createElement('a');
+      
+      if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('[ExperimentManager] Error downloading JSON:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Test Supabase connection
+   */
+  async testSupabaseConnection() {
+    if (!this.useSupabase || !this.supabaseManager) {
+      return false;
+    }
+
+    try {
+      return await this.supabaseManager.testConnection();
+    } catch (error) {
+      console.error('[ExperimentManager] Supabase connection test failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get database health statistics
+   */
+  async getSupabaseHealthStats() {
+    if (!this.useSupabase || !this.supabaseManager) {
+      return null;
+    }
+
+    try {
+      return await this.supabaseManager.getHealthStats();
+    } catch (error) {
+      console.error('[ExperimentManager] Error getting health stats:', error);
+      return null;
+    }
+  }
+
   getDebugInfo() {
     return {
       userId: this.userId,
@@ -637,6 +855,8 @@ class ExperimentManager {
       remainingSessions: this.getRemainingSessionsCount(),
       sessionOrder: this.sessionOrder,
       isExperimentActive: this.isExperimentActive,
+      supabaseEnabled: this.useSupabase,
+      supabaseInitialized: this.supabaseManager ? this.supabaseManager.isInitialized : false,
     };
   }
 }

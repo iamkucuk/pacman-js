@@ -3724,15 +3724,15 @@ class ExperimentManager {
   constructor() {
     this.SPEED_CONFIGS = {
       pacman: {
-        slow: 0.3,    // Very slow - 30% of normal speed
-        normal: 1.0,  // Normal baseline
-        fast: 2.5     // Very fast - 250% of normal speed
+        slow: 0.3, // Very slow - 30% of normal speed
+        normal: 1.0, // Normal baseline
+        fast: 2.5, // Very fast - 250% of normal speed
       },
       ghost: {
-        slow: 0.2,    // Very slow - 20% of normal speed  
-        normal: 1.0,  // Normal baseline
-        fast: 3.0     // Very fast - 300% of normal speed
-      }
+        slow: 0.2, // Very slow - 20% of normal speed
+        normal: 1.0, // Normal baseline
+        fast: 3.0, // Very fast - 300% of normal speed
+      },
     };
 
     this.PERMUTATIONS = this.generatePermutations();
@@ -3743,37 +3743,95 @@ class ExperimentManager {
     this.currentMetrics = null;
     this.gameStartTime = null;
     this.isExperimentActive = false;
+
+    // Supabase integration
+    this.supabaseManager = null;
+    this.useSupabase = true; // Enable Supabase by default
+    this.initializeSupabase();
+  }
+
+  async initializeSupabase() {
+    try {
+      if (typeof SupabaseDataManager !== 'undefined') {
+        this.supabaseManager = new SupabaseDataManager();
+        const initialized = await this.supabaseManager.initialize();
+        if (initialized) {
+          console.log('[ExperimentManager] 🚀 Supabase integration enabled');
+        } else {
+          console.warn('[ExperimentManager] Supabase init failed, using localStorage');
+          this.useSupabase = false;
+        }
+      } else {
+        console.warn('[ExperimentManager] SupabaseDataManager not found, using localStorage');
+        this.useSupabase = false;
+      }
+    } catch (error) {
+      console.error('[ExperimentManager] Supabase initialization error:', error);
+      this.useSupabase = false;
+    }
   }
 
   generatePermutations() {
     const permutations = [];
     const pacmanSpeeds = ['slow', 'normal', 'fast'];
     const ghostSpeeds = ['slow', 'normal', 'fast'];
-    
+
     let id = 0;
     for (const pacmanSpeed of pacmanSpeeds) {
       for (const ghostSpeed of ghostSpeeds) {
         permutations.push({
           id: id++,
           pacman: pacmanSpeed,
-          ghost: ghostSpeed
+          ghost: ghostSpeed,
         });
       }
     }
     return permutations;
   }
 
-  initializeUser(userId) {
+  async initializeUser(userId) {
     if (!userId || userId.trim() === '') {
       throw new Error('User ID is required');
     }
 
     this.userId = userId.trim();
-    this.loadUserData();
-    
+
+    if (this.useSupabase && this.supabaseManager) {
+      try {
+        await this.loadUserDataFromSupabase();
+      } catch (error) {
+        console.error('[ExperimentManager] Supabase user init failed:', error);
+        // Fallback to localStorage
+        this.loadUserData();
+      }
+    } else {
+      this.loadUserData();
+    }
+
     if (this.sessionOrder.length === 0) {
       this.sessionOrder = this.generateRandomizedOrder();
-      this.saveUserData();
+      await this.saveUserData();
+    }
+  }
+
+  async loadUserDataFromSupabase() {
+    if (!this.supabaseManager) return false;
+
+    try {
+      const userData = await this.supabaseManager.getUserData(this.userId);
+      if (userData) {
+        this.sessionOrder = userData.sessionOrder || [];
+        console.log('[ExperimentManager] 📖 User data loaded from Supabase');
+        return true;
+      } else {
+        // Initialize new user in Supabase
+        await this.supabaseManager.initializeUser(this.userId, []);
+        this.sessionOrder = [];
+        return true;
+      }
+    } catch (error) {
+      console.error('[ExperimentManager] Error loading from Supabase:', error);
+      return false;
     }
   }
 
@@ -3781,7 +3839,7 @@ class ExperimentManager {
     if (this.sessionManager) {
       return this.sessionManager.generateAdvancedRandomization(this.userId);
     }
-    
+
     // Fallback to simple randomization
     const order = [...Array(9).keys()];
     for (let i = order.length - 1; i > 0; i--) {
@@ -3791,7 +3849,7 @@ class ExperimentManager {
     return order;
   }
 
-  startSession() {
+  async startSession() {
     console.log('[ExperimentManager] 🟢 START SESSION CALLED');
     if (!this.userId) {
       throw new Error('User ID must be set before starting session');
@@ -3810,11 +3868,11 @@ class ExperimentManager {
 
     const permutationId = this.sessionOrder[completedSessions];
     const config = this.PERMUTATIONS[permutationId];
-    
+
     this.currentSession = {
       userId: this.userId,
       sessionId: completedSessions + 1,
-      permutationId: permutationId,
+      permutationId,
       speedConfig: config,
       timestamp: new Date(),
       events: [],
@@ -3824,10 +3882,10 @@ class ExperimentManager {
         totalDeaths: 0,
         successfulTurns: 0,
         totalTurns: 0,
-        gameTime: 0
+        gameTime: 0,
       },
       resumed: false,
-      startTime: Date.now()
+      startTime: Date.now(),
     };
 
     this.currentMetrics = this.currentSession;
@@ -3837,39 +3895,49 @@ class ExperimentManager {
     this.lastPauseStart = null;
     this.isExperimentActive = true;
 
+    // Create session in Supabase
+    if (this.useSupabase && this.supabaseManager) {
+      try {
+        await this.supabaseManager.createSession(this.currentSession);
+        console.log('[ExperimentManager] 📊 Session created in Supabase');
+      } catch (error) {
+        console.error('[ExperimentManager] Failed to create Supabase session:', error);
+      }
+    }
+
     console.log('[ExperimentManager] 🎯 About to apply speed configuration:', config);
     this.applySpeedConfiguration(config);
     this.saveCurrentSession();
-    
+
     return this.currentSession;
   }
 
   canResumeSession(savedState) {
     const age = Date.now() - (savedState.lastSaved || savedState.startTime || 0);
     const maxAge = 60 * 60 * 1000; // 1 hour
-    
-    return age < maxAge && 
-           savedState.userId === this.userId && 
-           savedState.sessionId > 0 && 
-           savedState.sessionId <= 9;
+
+    return age < maxAge
+           && savedState.userId === this.userId
+           && savedState.sessionId > 0
+           && savedState.sessionId <= 9;
   }
 
   resumeSession(savedState) {
     console.log('[ExperimentManager] Resuming previous session:', savedState.sessionId);
-    
+
     this.currentSession = {
       ...savedState,
       resumed: true,
-      resumeTime: Date.now()
+      resumeTime: Date.now(),
     };
-    
+
     this.currentMetrics = this.currentSession;
     this.gameStartTime = savedState.startTime || Date.now();
     this.isExperimentActive = true;
 
     this.applySpeedConfiguration(savedState.speedConfig);
     this.saveCurrentSession();
-    
+
     return this.currentSession;
   }
 
@@ -3889,10 +3957,10 @@ class ExperimentManager {
       detail: {
         pacmanMultiplier,
         ghostMultiplier,
-        config
-      }
+        config,
+      },
     });
-    
+
     window.dispatchEvent(event);
     console.log('[ExperimentManager] ✅ Speed config event dispatched');
 
@@ -3902,12 +3970,12 @@ class ExperimentManager {
       window.gameCoordinator.speedController.applySpeedConfiguration({
         pacmanMultiplier,
         ghostMultiplier,
-        config
+        config,
       });
     }
   }
 
-  logEvent(type, data = {}) {
+  async logEvent(type, data = {}) {
     if (!this.isExperimentActive || !this.currentMetrics) {
       console.warn('[ExperimentManager] Cannot log event - experiment not active');
       return false;
@@ -3923,13 +3991,23 @@ class ExperimentManager {
         type,
         time: Date.now() - this.gameStartTime,
         timestamp: new Date(),
-        ...data
+        userId: this.userId,
+        data,
       };
 
       this.currentMetrics.events.push(event);
       this.updateSummary(type, data);
       this.saveCurrentSession();
-      
+
+      // Log to Supabase
+      if (this.useSupabase && this.supabaseManager) {
+        try {
+          await this.supabaseManager.logEvent(event);
+        } catch (error) {
+          console.error('[ExperimentManager] Failed to log event to Supabase:', error);
+        }
+      }
+
       return true;
     } catch (error) {
       console.error('[ExperimentManager] Error logging event:', error);
@@ -3939,7 +4017,7 @@ class ExperimentManager {
 
   validateEventData(type, data) {
     const validTypes = ['ghostEaten', 'pelletEaten', 'death', 'turnComplete'];
-    
+
     if (!validTypes.includes(type)) {
       console.warn(`[ExperimentManager] Unknown event type: ${type}`);
       return false;
@@ -3957,21 +4035,21 @@ class ExperimentManager {
           return false;
         }
         break;
-        
+
       case 'pelletEaten':
         if (!data.type || !['pacdot', 'powerPellet', 'fruit'].includes(data.type)) {
           console.warn('[ExperimentManager] pelletEaten event requires valid type');
           return false;
         }
         break;
-        
+
       case 'death':
         if (!data.cause || typeof data.cause !== 'string') {
           console.warn('[ExperimentManager] death event requires valid cause');
           return false;
         }
         break;
-        
+
       case 'turnComplete':
         if (typeof data.success !== 'boolean') {
           console.warn('[ExperimentManager] turnComplete event requires boolean success');
@@ -3986,8 +4064,8 @@ class ExperimentManager {
   updateSummary(type, data) {
     if (!this.currentMetrics) return;
 
-    const summary = this.currentMetrics.summary;
-    
+    const { summary } = this.currentMetrics;
+
     switch (type) {
       case 'ghostEaten':
         summary.totalGhostsEaten++;
@@ -4009,69 +4087,102 @@ class ExperimentManager {
 
   startGameplayTimer() {
     if (!this.isExperimentActive || this.gameplayStarted) return;
-    
+
     this.gameStartTime = Date.now();
     this.gameplayStarted = true;
     this.gameplayPausedTime = 0;
     this.lastPauseStart = null;
-    
+
     console.log('[ExperimentManager] ⏱️ Gameplay timer started');
   }
 
   pauseGameplayTimer() {
     if (!this.gameplayStarted || this.lastPauseStart) return;
-    
+
     this.lastPauseStart = Date.now();
     console.log('[ExperimentManager] ⏸️ Gameplay timer paused');
   }
 
   resumeGameplayTimer() {
     if (!this.gameplayStarted || !this.lastPauseStart) return;
-    
+
     const pauseDuration = Date.now() - this.lastPauseStart;
     this.gameplayPausedTime += pauseDuration;
     this.lastPauseStart = null;
-    
-    console.log('[ExperimentManager] ▶️ Gameplay timer resumed (paused for ' + pauseDuration + 'ms)');
+
+    console.log(`[ExperimentManager] ▶️ Gameplay timer resumed (paused for ${pauseDuration}ms)`);
   }
 
   getGameplayTime() {
     if (!this.gameStartTime) return 0;
-    
-    let currentTime = Date.now();
+
+    const currentTime = Date.now();
     let totalTime = currentTime - this.gameStartTime;
-    
+
     // Subtract total paused time
     totalTime -= this.gameplayPausedTime;
-    
+
     // If currently paused, subtract current pause duration
     if (this.lastPauseStart) {
       totalTime -= (currentTime - this.lastPauseStart);
     }
-    
+
     return Math.max(0, totalTime);
   }
 
-  endSession() {
+  async endSession() {
     if (!this.isExperimentActive || !this.currentMetrics) return;
 
     // Ensure timer is properly stopped and calculate final time
     if (this.lastPauseStart) {
       this.resumeGameplayTimer(); // Close any open pause
     }
-    
+
     this.currentMetrics.summary.gameTime = this.getGameplayTime();
     this.metrics.push(this.currentMetrics);
-    
+
+    // Complete session in Supabase
+    if (this.useSupabase && this.supabaseManager) {
+      try {
+        // Update session summary with final metrics
+        await this.supabaseManager.updateSessionSummary({
+          totalGhostsEaten: this.currentMetrics.summary.totalGhostsEaten,
+          totalPelletsEaten: this.currentMetrics.summary.totalPelletsEaten,
+          totalPacdotsEaten: this.getDetailedCount('pacdot'),
+          totalPowerPelletsEaten: this.getDetailedCount('powerPellet'),
+          totalFruitsEaten: this.getDetailedCount('fruit'),
+          totalDeaths: this.currentMetrics.summary.totalDeaths,
+          successfulTurns: this.currentMetrics.summary.successfulTurns,
+          totalTurns: this.currentMetrics.summary.totalTurns,
+        });
+
+        // Mark session as completed
+        await this.supabaseManager.completeSession(this.currentMetrics.summary.gameTime);
+        console.log('[ExperimentManager] ✅ Session completed in Supabase');
+      } catch (error) {
+        console.error('[ExperimentManager] Failed to complete Supabase session:', error);
+      }
+    }
+
+    // Save to CSV after session completion
+    this.saveSessionToCSV(this.currentMetrics);
+
     this.saveUserData();
     this.clearCurrentSession();
-    
+
     this.isExperimentActive = false;
     this.currentMetrics = null;
     this.gameStartTime = null;
     this.gameplayStarted = false;
     this.gameplayPausedTime = 0;
     this.lastPauseStart = null;
+  }
+
+  getDetailedCount(eventType) {
+    if (!this.currentMetrics || !this.currentMetrics.events) return 0;
+    return this.currentMetrics.events.filter(event => 
+      event.type === 'pelletEaten' && event.data && event.data.type === eventType
+    ).length;
   }
 
   getCompletedSessionsCount() {
@@ -4084,16 +4195,16 @@ class ExperimentManager {
 
   getCurrentSessionInfo() {
     if (!this.currentSession) return null;
-    
+
     return {
       sessionId: this.currentSession.sessionId,
       completedSessions: this.getCompletedSessionsCount(),
       totalSessions: 9,
-      speedConfig: this.currentSession.speedConfig
+      speedConfig: this.currentSession.speedConfig,
     };
   }
 
-  saveUserData() {
+  async saveUserData() {
     if (!this.userId) {
       console.warn('[ExperimentManager] Cannot save user data - no userId');
       return false;
@@ -4105,7 +4216,7 @@ class ExperimentManager {
         sessionOrder: this.sessionOrder,
         metrics: this.metrics,
         lastUpdated: new Date(),
-        version: '1.0'
+        version: '1.0',
       };
 
       const serialized = JSON.stringify(userData);
@@ -4114,7 +4225,18 @@ class ExperimentManager {
         userData.metrics = userData.metrics.slice(-5); // Keep only last 5 sessions
       }
 
+      // Save to localStorage for backward compatibility
       localStorage.setItem(`experiment_${this.userId}`, JSON.stringify(userData));
+
+      // Update session order in Supabase
+      if (this.useSupabase && this.supabaseManager) {
+        try {
+          await this.supabaseManager.updateUserSessionOrder(this.userId, this.sessionOrder);
+        } catch (error) {
+          console.error('[ExperimentManager] Failed to update Supabase session order:', error);
+        }
+      }
+
       return true;
     } catch (error) {
       console.error('[ExperimentManager] Error saving user data:', error);
@@ -4132,16 +4254,15 @@ class ExperimentManager {
       const stored = localStorage.getItem(`experiment_${this.userId}`);
       if (stored) {
         const userData = JSON.parse(stored);
-        
+
         if (this.validateUserData(userData)) {
           this.sessionOrder = userData.sessionOrder || [];
           this.metrics = userData.metrics || [];
           return true;
-        } else {
-          console.warn('[ExperimentManager] Invalid user data format, resetting');
-          this.resetUserData();
-          return false;
         }
+        console.warn('[ExperimentManager] Invalid user data format, resetting');
+        this.resetUserData();
+        return false;
       }
       return true;
     } catch (error) {
@@ -4177,7 +4298,7 @@ class ExperimentManager {
   resetUserData() {
     this.sessionOrder = [];
     this.metrics = [];
-    
+
     if (this.userId) {
       localStorage.removeItem(`experiment_${this.userId}`);
       localStorage.removeItem(`current_session_${this.userId}`);
@@ -4191,7 +4312,7 @@ class ExperimentManager {
 
   loadCurrentSession() {
     if (!this.userId) return null;
-    
+
     const stored = localStorage.getItem(`current_session_${this.userId}`);
     if (stored) {
       this.currentSession = JSON.parse(stored);
@@ -4213,26 +4334,27 @@ class ExperimentManager {
       sessionOrder: this.sessionOrder,
       metrics: this.metrics,
       exportTimestamp: new Date(),
-      totalSessions: this.metrics.length
+      totalSessions: this.metrics.length,
     };
 
     if (format === 'csv') {
       return this.convertToCSV(exportData);
     }
-    
+
     return JSON.stringify(exportData, null, 2);
   }
 
   convertToCSV(data) {
     const headers = [
-      'userId', 'sessionId', 'permutationId', 'pacmanSpeed', 'ghostSpeed',
-      'totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths', 
-      'successfulTurns', 'totalTurns', 'gameTime', 'timestamp'
+      'userId', 'sessionId', 'sessionType', 'permutationId', 'pacmanSpeed', 'ghostSpeed',
+      'totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths',
+      'successfulTurns', 'totalTurns', 'gameTime', 'timestamp',
     ];
 
     const rows = data.metrics.map(session => [
       session.userId,
       session.sessionId,
+      session.permutationId + 1, // Session type (1-9)
       session.permutationId,
       session.speedConfig.pacman,
       session.speedConfig.ghost,
@@ -4242,20 +4364,221 @@ class ExperimentManager {
       session.summary.successfulTurns,
       session.summary.totalTurns,
       session.summary.gameTime,
-      session.timestamp
+      session.timestamp,
     ]);
 
     return [headers, ...rows].map(row => row.join(',')).join('\n');
   }
 
+  saveSessionToCSV(sessionData) {
+    if (!sessionData || !this.userId) {
+      console.warn('[ExperimentManager] Cannot save session to CSV - missing data');
+      return false;
+    }
+
+    try {
+      const csvData = this.convertSessionToCSVRow(sessionData);
+      const filename = `pacman_experiment_${this.userId}.csv`;
+
+      // Check if this is the first session for this user
+      const existingCSV = localStorage.getItem(`csv_${this.userId}`);
+      let fullCSV;
+
+      if (!existingCSV) {
+        // First session - include headers
+        const headers = [
+          'userId', 'sessionId', 'sessionType', 'permutationId', 'pacmanSpeed', 'ghostSpeed',
+          'totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths',
+          'successfulTurns', 'totalTurns', 'gameTime', 'timestamp',
+        ];
+        fullCSV = `${headers.join(',')}\n${csvData}`;
+      } else {
+        // Append to existing CSV
+        fullCSV = `${existingCSV}\n${csvData}`;
+      }
+
+      // Save to localStorage for persistence
+      localStorage.setItem(`csv_${this.userId}`, fullCSV);
+
+      // Also trigger download
+      this.downloadCSV(fullCSV, filename);
+
+      console.log('[ExperimentManager] Session saved to CSV:', filename);
+      return true;
+    } catch (error) {
+      console.error('[ExperimentManager] Error saving session to CSV:', error);
+      return false;
+    }
+  }
+
+  convertSessionToCSVRow(session) {
+    return [
+      session.userId,
+      session.sessionId,
+      session.permutationId + 1, // Session type (1-9)
+      session.permutationId,
+      session.speedConfig.pacman,
+      session.speedConfig.ghost,
+      session.summary.totalGhostsEaten,
+      session.summary.totalPelletsEaten,
+      session.summary.totalDeaths,
+      session.summary.successfulTurns,
+      session.summary.totalTurns,
+      session.summary.gameTime,
+      session.timestamp,
+    ].join(',');
+  }
+
+  downloadCSV(csvContent, filename) {
+    try {
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+
+      if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        console.log('[ExperimentManager] CSV file downloaded:', filename);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('[ExperimentManager] Error downloading CSV:', error);
+      return false;
+    }
+  }
+
+  exportUserCSV() {
+    if (!this.userId) {
+      console.warn('[ExperimentManager] Cannot export CSV - no user ID');
+      return false;
+    }
+
+    const csvData = localStorage.getItem(`csv_${this.userId}`);
+    if (!csvData) {
+      console.warn('[ExperimentManager] No CSV data found for user:', this.userId);
+      return false;
+    }
+
+    const filename = `pacman_experiment_${this.userId}_complete.csv`;
+    return this.downloadCSV(csvData, filename);
+  }
+
+  /**
+   * Export user data from Supabase for research analysis
+   */
+  async exportSupabaseData() {
+    if (!this.useSupabase || !this.supabaseManager) {
+      console.warn('[ExperimentManager] Supabase not available');
+      return null;
+    }
+
+    try {
+      const data = await this.supabaseManager.exportUserData(this.userId);
+      if (data) {
+        const filename = `pacman_supabase_${this.userId}_${new Date().toISOString().split('T')[0]}.json`;
+        this.downloadJSON(JSON.stringify(data, null, 2), filename);
+        console.log('[ExperimentManager] ✅ Supabase data exported:', filename);
+        return data;
+      }
+      return null;
+    } catch (error) {
+      console.error('[ExperimentManager] Error exporting Supabase data:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get aggregated research data (for researchers)
+   */
+  async getResearchData(filters = {}) {
+    if (!this.useSupabase || !this.supabaseManager) {
+      console.warn('[ExperimentManager] Supabase not available');
+      return null;
+    }
+
+    try {
+      return await this.supabaseManager.getResearchData(filters);
+    } catch (error) {
+      console.error('[ExperimentManager] Error getting research data:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Download JSON data
+   */
+  downloadJSON(jsonContent, filename) {
+    try {
+      const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+      const link = document.createElement('a');
+      
+      if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('[ExperimentManager] Error downloading JSON:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Test Supabase connection
+   */
+  async testSupabaseConnection() {
+    if (!this.useSupabase || !this.supabaseManager) {
+      return false;
+    }
+
+    try {
+      return await this.supabaseManager.testConnection();
+    } catch (error) {
+      console.error('[ExperimentManager] Supabase connection test failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get database health statistics
+   */
+  async getSupabaseHealthStats() {
+    if (!this.useSupabase || !this.supabaseManager) {
+      return null;
+    }
+
+    try {
+      return await this.supabaseManager.getHealthStats();
+    } catch (error) {
+      console.error('[ExperimentManager] Error getting health stats:', error);
+      return null;
+    }
+  }
+
   getDebugInfo() {
     return {
       userId: this.userId,
-      currentSession: this.currentSession?.sessionId || null,
+      currentSession: (this.currentSession && this.currentSession.sessionId) || null,
       completedSessions: this.getCompletedSessionsCount(),
       remainingSessions: this.getRemainingSessionsCount(),
       sessionOrder: this.sessionOrder,
-      isExperimentActive: this.isExperimentActive
+      isExperimentActive: this.isExperimentActive,
+      supabaseEnabled: this.useSupabase,
+      supabaseInitialized: this.supabaseManager ? this.supabaseManager.isInitialized : false,
     };
   }
 }
@@ -4290,37 +4613,49 @@ class ExperimentUI {
 
     // Create a minimal debug-only interface since main menu handles user input
     const baseStyle = 'position: fixed; top: 10px; left: 10px; z-index: 1000;';
-    const containerStyle = 'background: rgba(0,0,0,0.8); color: white; ' +
-      'padding: 12px;';
-    const sizeStyle = 'border-radius: 8px; font-family: monospace; ' +
-      'max-width: 350px; min-width: 280px;';
+    const containerStyle = 'background: rgba(0,0,0,0.8); color: white; '
+      + 'padding: 12px;';
+    const sizeStyle = 'border-radius: 8px; font-family: monospace; '
+      + 'max-width: 350px; min-width: 280px;';
     const fontStyle = 'font-size: 12px; line-height: 1.4;';
     const showStyle = this.DEBUG ? '' : 'display: none;';
-    
+
     const interfaceHTML = `
-      <div id="experiment-interface" style="${baseStyle} ${containerStyle} ${sizeStyle} ${fontStyle} ${showStyle}">
+      <div id="experiment-interface" style="${baseStyle} ${containerStyle} 
+        ${sizeStyle} ${fontStyle} ${showStyle}">
         <div id="experiment-session" style="display: none;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+          <div style="display: flex; justify-content: space-between; 
+            align-items: center; margin-bottom: 5px;">
             <h4 style="margin: 0; color: #ffff00; font-size: 12px;">
               Live Metrics
             </h4>
-            <button id="minimize-metrics-btn" style="background: none; border: none; color: #ffff00; cursor: pointer; font-size: 14px; padding: 0; line-height: 1;" title="Minimize">
+            <button id="minimize-metrics-btn" style="background: none; 
+              border: none; color: #ffff00; cursor: pointer; font-size: 14px; 
+              padding: 0; line-height: 1;" title="Minimize">
               ▼
             </button>
           </div>
           <div id="metrics-content" style="display: block;">
-          <div id="session-info" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          <div id="session-info" style="margin-bottom: 8px; font-size: 11px; 
+            background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
           </div>
-          <div id="speed-config" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          <div id="speed-config" style="margin-bottom: 8px; font-size: 11px; 
+            background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
           </div>
-          <div id="metrics-display" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          <div id="metrics-display" style="margin-bottom: 8px; font-size: 11px; 
+            background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
           </div>
-          <div id="progress-info" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          <div id="progress-info" style="margin-bottom: 8px; font-size: 11px; 
+            background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
           </div>
-          <button id="end-session-btn" style="width: 100%; padding: 8px; background: #ff4444; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; color: white;">
+          <button id="end-session-btn" style="width: 100%; padding: 8px; 
+            background: #ff4444; border: none; border-radius: 4px; 
+            cursor: pointer; font-size: 11px; font-weight: bold; color: white;">
             End Session
           </button>
-          <button id="export-data-btn" style="width: 100%; padding: 6px; background: #4444ff; border: none; border-radius: 4px; cursor: pointer; margin-top: 4px; font-size: 10px; color: white;">
+          <button id="export-data-btn" style="width: 100%; padding: 6px; 
+            background: #4444ff; border: none; border-radius: 4px; 
+            cursor: pointer; margin-top: 4px; font-size: 10px; color: white;">
             Export Data
           </button>
           </div>
@@ -4333,10 +4668,14 @@ class ExperimentUI {
           <p style="margin: 0 0 8px 0; font-size: 10px;">
             All 9 sessions completed.
           </p>
-          <button id="export-final-data-btn" style="width: 100%; padding: 4px; background: #00ff00; border: none; border-radius: 2px; cursor: pointer; font-size: 10px;">
+          <button id="export-final-data-btn" style="width: 100%; padding: 4px; 
+            background: #00ff00; border: none; border-radius: 2px; 
+            cursor: pointer; font-size: 10px;">
             Export Data
           </button>
-          <button id="reset-experiment-btn" style="width: 100%; padding: 4px; background: #ff4444; border: none; border-radius: 2px; cursor: pointer; margin-top: 3px; font-size: 10px;">
+          <button id="reset-experiment-btn" style="width: 100%; padding: 4px; 
+            background: #ff4444; border: none; border-radius: 2px; 
+            cursor: pointer; margin-top: 3px; font-size: 10px;">
             Reset
           </button>
         </div>
@@ -4355,10 +4694,13 @@ class ExperimentUI {
 
   createDebugPanel() {
     return `
-      <div id="debug-panel" style="margin-top: 15px; border-top: 1px solid #333; padding-top: 10px;">
+      <div id="debug-panel" style="margin-top: 15px; border-top: 1px solid #333;
+        padding-top: 10px;">
         <h4 style="margin: 0 0 5px 0; color: #ffaa00;">Debug Info</h4>
         <div id="debug-info" style="font-size: 10px; color: #ccc;"></div>
-        <button id="toggle-debug" style="padding: 3px 6px; background: #333; border: none; border-radius: 2px; cursor: pointer; font-size: 10px; margin-top: 5px;">Toggle Details</button>
+        <button id="toggle-debug" style="padding: 3px 6px; background: #333; 
+          border: none; border-radius: 2px; cursor: pointer; font-size: 10px; 
+          margin-top: 5px;">Toggle Details</button>
       </div>
     `;
   }
@@ -4389,7 +4731,9 @@ class ExperimentUI {
     }
 
     if (minimizeBtn) {
-      minimizeBtn.addEventListener('click', () => this.toggleMetricsMinimized());
+      minimizeBtn.addEventListener('click', () => {
+        this.toggleMetricsMinimized();
+      });
     }
 
     if (this.DEBUG) {
@@ -4403,6 +4747,7 @@ class ExperimentUI {
 
     // Listen for experiment events to show/hide the interface
     window.addEventListener('experimentSessionStarted', () => {
+      // eslint-disable-next-line no-console
       console.log('[ExperimentUI] Session started event received');
       this.showSessionInterface();
     });
@@ -4419,11 +4764,12 @@ class ExperimentUI {
 
   handleEndSession() {
     try {
+      // eslint-disable-next-line no-console
       console.log('[ExperimentUI] End session button clicked');
-      
+
       // Stop ALL metrics display intervals immediately
       this.stopMetricsDisplay();
-      
+
       // Clear any other possible intervals
       if (this.metricsUpdateInterval) {
         clearInterval(this.metricsUpdateInterval);
@@ -4431,17 +4777,20 @@ class ExperimentUI {
       }
 
       // Completely remove the experiment interface from DOM
-      const experimentInterface = document.getElementById('experiment-interface');
+      const experimentInterface = document
+        .getElementById('experiment-interface');
       if (experimentInterface) {
+        // eslint-disable-next-line no-console
         console.log('[ExperimentUI] Removing experiment interface from DOM');
         experimentInterface.remove();
       }
 
       // Stop the game engine properly
       if (window.gameCoordinator && window.gameCoordinator.gameEngine) {
+        // eslint-disable-next-line no-console
         console.log('[ExperimentUI] Stopping game engine');
         window.gameCoordinator.gameEngine.stop();
-        
+
         // Also pause the game using the pause mechanism
         if (window.gameCoordinator.gameEngine.running) {
           window.gameCoordinator.gameEngine.changePausedState(true);
@@ -4452,35 +4801,41 @@ class ExperimentUI {
       if (window.gameCoordinator) {
         // Stop Pacman movement
         if (window.gameCoordinator.pacman) {
+          // eslint-disable-next-line no-console
           console.log('[ExperimentUI] Stopping Pacman movement');
           window.gameCoordinator.pacman.moving = false;
         }
-        
+
         // Pause all ghosts
         if (window.gameCoordinator.ghosts) {
+          // eslint-disable-next-line no-console
           console.log('[ExperimentUI] Pausing ghosts');
-          window.gameCoordinator.ghosts.forEach(ghost => {
+          window.gameCoordinator.ghosts.forEach((ghost) => {
             if (ghost && typeof ghost.pause === 'function') {
               ghost.pause(true);
             }
           });
         }
-        
+
         // End session and show transition
-        console.log('[ExperimentUI] Ending experiment session and showing transition');
-        window.gameCoordinator.endExperimentSessionWithReason('user_terminated');
-        
-        // Show session transition after a brief delay to ensure everything is stopped
+        // eslint-disable-next-line no-console
+        console.log('[ExperimentUI] Ending experiment session and '
+          + 'showing transition');
+        window.gameCoordinator
+          .endExperimentSessionWithReason('user_terminated');
+
+        // Show session transition after a brief delay
         setTimeout(() => {
           window.gameCoordinator.showSessionTransition();
         }, 100);
       }
-      
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error ending session:', error);
-      
+
       // Fallback: try to at least show the session transition
-      if (window.gameCoordinator && typeof window.gameCoordinator.showSessionTransition === 'function') {
+      if (window.gameCoordinator
+        && typeof window.gameCoordinator.showSessionTransition === 'function') {
         window.gameCoordinator.showSessionTransition();
       }
     }
@@ -4488,18 +4843,36 @@ class ExperimentUI {
 
   handleExportData() {
     try {
-      const jsonData = this.experimentManager.exportData('json');
-      const csvData = this.experimentManager.exportData('csv');
+      // Use the new CSV export functionality from experimentManager
+      const success = this.experimentManager.exportUserCSV();
 
-      this.downloadFile(`experiment_${this.experimentManager.userId}_data.json`, jsonData);
-      this.downloadFile(`experiment_${this.experimentManager.userId}_data.csv`, csvData);
+      if (success) {
+        // eslint-disable-next-line no-console
+        console.log('[ExperimentUI] CSV export completed');
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn('[ExperimentUI] CSV export failed, trying fallback');
+        // Fallback to old method
+        const jsonData = this.experimentManager.exportData('json');
+        const csvData = this.experimentManager.exportData('csv');
+        this.downloadFile(
+          `experiment_${this.experimentManager.userId}_data.json`,
+          jsonData,
+        );
+        this.downloadFile(
+          `experiment_${this.experimentManager.userId}_data.csv`,
+          csvData,
+        );
+      }
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error exporting data:', error);
     }
   }
 
   handleResetExperiment() {
-    const confirmMessage = 'Are you sure you want to reset the experiment? All data will be lost.';
+    const confirmMessage = 'Are you sure you want to reset the experiment? '
+      + 'All data will be lost.';
     // eslint-disable-next-line no-alert
     if (window.confirm(confirmMessage)) {
       if (this.experimentManager.userId) {
@@ -4517,11 +4890,11 @@ class ExperimentUI {
 
     const metricsContent = document.getElementById('metrics-content');
     const minimizeBtn = document.getElementById('minimize-metrics-btn');
-    
+
     if (!metricsContent || !minimizeBtn) return;
 
     const isMinimized = metricsContent.style.display === 'none';
-    
+
     if (isMinimized) {
       // Expand
       metricsContent.style.display = 'block';
@@ -4569,7 +4942,7 @@ class ExperimentUI {
     if (sessionDiv) {
       sessionDiv.style.display = 'block';
     }
-    
+
     // Update all the session information and start metrics display
     this.updateSessionDisplay();
     this.startMetricsDisplay();
@@ -4602,6 +4975,7 @@ class ExperimentUI {
 
     const sessionInfo = this.experimentManager.getCurrentSessionInfo();
     if (!sessionInfo) {
+      // eslint-disable-next-line no-console
       console.warn('[ExperimentUI] No session info available');
       return;
     }
@@ -4627,7 +5001,8 @@ class ExperimentUI {
 
     if (progressInfoDiv) {
       progressInfoDiv.innerHTML = `
-        <strong>Progress:</strong> ${sessionInfo.completedSessions}/${sessionInfo.totalSessions} completed
+        <strong>Progress:</strong> ${sessionInfo.completedSessions}/`
+        + `${sessionInfo.totalSessions} completed
       `;
     }
 
@@ -4649,12 +5024,16 @@ class ExperimentUI {
   }
 
   stopMetricsDisplay() {
-    console.log('[ExperimentUI] stopMetricsDisplay called, interval ID:', this.metricsUpdateInterval);
+    // eslint-disable-next-line no-console
+    console.log('[ExperimentUI] stopMetricsDisplay called, interval ID:',
+      this.metricsUpdateInterval);
     if (this.metricsUpdateInterval) {
       clearInterval(this.metricsUpdateInterval);
       this.metricsUpdateInterval = null;
+      // eslint-disable-next-line no-console
       console.log('[ExperimentUI] Metrics interval cleared');
     } else {
+      // eslint-disable-next-line no-console
       console.log('[ExperimentUI] No metrics interval to clear');
     }
   }
@@ -4662,30 +5041,34 @@ class ExperimentUI {
   updateMetricsDisplay() {
     if (this.isTestEnvironment) return;
 
+    // eslint-disable-next-line no-console
     console.log('[ExperimentUI] updateMetricsDisplay called');
-    
+
     const metricsDiv = document.getElementById('metrics-display');
     if (!metricsDiv) {
+      // eslint-disable-next-line no-console
       console.log('[ExperimentUI] No metrics div found');
       return;
     }
 
     const metrics = this.getGameCoordinatorMetrics();
     if (!metrics) {
-      console.log('[ExperimentUI] No metrics available, showing waiting message');
+      // eslint-disable-next-line no-console
+      console.log('[ExperimentUI] No metrics available, '
+        + 'showing waiting message');
       metricsDiv.innerHTML = '<em>Waiting for game data...</em>';
       return;
     }
 
-    const gameTime = this.experimentManager.gameStartTime ? 
-      Math.floor(this.experimentManager.getGameplayTime() / 1000) : 0;
-    
+    const gameTime = this.experimentManager.gameStartTime
+      ? Math.floor(this.experimentManager.getGameplayTime() / 1000) : 0;
+
     // Get detailed breakdown of eaten items
     const detailedStats = this.getDetailedEatenStats();
-    
+
     const sessionInfo = this.experimentManager.getCurrentSessionInfo();
     const sessionId = sessionInfo ? sessionInfo.sessionId : '?';
-    
+
     metricsDiv.innerHTML = `
       <strong>📊 Session ${sessionId} Metrics</strong><br>
       <strong>🍴 Eaten Items:</strong><br>
@@ -4695,7 +5078,8 @@ class ExperimentUI {
       &nbsp;&nbsp;👻 Ghosts: ${detailedStats.ghosts}<br>
       <strong>📈 Game Stats:</strong><br>
       &nbsp;&nbsp;💀 Deaths: ${metrics.summary.totalDeaths}<br>
-      &nbsp;&nbsp;🔄 Turns: ${metrics.summary.successfulTurns}/${metrics.summary.totalTurns}<br>
+      &nbsp;&nbsp;🔄 Turns: ${metrics.summary.successfulTurns}/`
+        + `${metrics.summary.totalTurns}<br>
       &nbsp;&nbsp;⏱️ Time: ${gameTime}s<br>
       &nbsp;&nbsp;📋 Events: ${metrics.events ? metrics.events.length : 0}
     `;
@@ -4712,7 +5096,7 @@ class ExperimentUI {
         };
       }
 
-      const events = this.experimentManager.currentMetrics.events;
+      const { events } = this.experimentManager.currentMetrics;
       if (!events) {
         return {
           pacdots: 0,
@@ -4750,6 +5134,9 @@ class ExperimentUI {
           case 'ghostEaten':
             stats.ghosts += 1;
             break;
+          default:
+            // Other event types not tracked in detailed stats
+            break;
         }
       });
 
@@ -4770,7 +5157,8 @@ class ExperimentUI {
 
   getGameCoordinatorMetrics() {
     try {
-      if (!this.isTestEnvironment && window.gameCoordinator && window.gameCoordinator.metricsCollector) {
+      if (!this.isTestEnvironment && window.gameCoordinator
+        && window.gameCoordinator.metricsCollector) {
         return window.gameCoordinator.metricsCollector.getCurrentMetrics();
       }
 
@@ -4781,6 +5169,7 @@ class ExperimentUI {
       return null;
     } catch (error) {
       if (this.DEBUG) {
+        // eslint-disable-next-line no-console
         console.warn('[ExperimentUI] Error getting metrics:', error);
       }
       return null;
@@ -4833,13 +5222,15 @@ class ExperimentUI {
     this.experimentManager.logEvent(type, data);
 
     if (this.DEBUG) {
+      // eslint-disable-next-line no-console
       console.log('[METRICS]', type, data);
     }
   }
 
   destroy() {
     if (!this.isTestEnvironment) {
-      const experimentInterface = document.getElementById('experiment-interface');
+      const experimentInterface = document
+        .getElementById('experiment-interface');
       if (experimentInterface) {
         experimentInterface.remove();
       }
@@ -7374,6 +7765,447 @@ class SpeedController {
 }
 
 
+/**
+ * Supabase Data Manager for Pac-Man Research Project
+ * Handles all database operations for collecting research data
+ */
+
+class SupabaseDataManager {
+  constructor() {
+    this.supabaseUrl = 'https://gjfbybkyoxtidnsgsdbe.supabase.co';
+    this.supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdqZmJ5Ymt5b3h0aWRuc2dzZGJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNzk0MDEsImV4cCI6MjA2NDg1NTQwMX0.Nzr5YVU62HQzPAKMEymUnPWpnK2MM0tBFJ82uZvuTbU';
+    this.supabase = null;
+    this.isInitialized = false;
+    this.currentSessionId = null;
+  }
+
+  async initialize() {
+    try {
+      // Load Supabase client from CDN if not already loaded
+      if (typeof window.supabase === 'undefined') {
+        await this.loadSupabaseClient();
+      }
+
+      this.supabase = window.supabase.createClient(
+        this.supabaseUrl,
+        this.supabaseKey
+      );
+
+      this.isInitialized = true;
+      console.log('[SupabaseDataManager] ✅ Initialized successfully');
+      return true;
+    } catch (error) {
+      console.error('[SupabaseDataManager] ❌ Initialization failed:', error);
+      return false;
+    }
+  }
+
+  async loadSupabaseClient() {
+    return new Promise((resolve, reject) => {
+      if (typeof window.supabase !== 'undefined') {
+        resolve();
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+      script.onload = () => {
+        console.log('[SupabaseDataManager] 📦 Supabase client loaded');
+        resolve();
+      };
+      script.onerror = () => {
+        reject(new Error('Failed to load Supabase client'));
+      };
+      document.head.appendChild(script);
+    });
+  }
+
+  /**
+   * Initialize or get existing user in the database
+   */
+  async initializeUser(userId, sessionOrder = []) {
+    if (!this.isInitialized) {
+      throw new Error('SupabaseDataManager not initialized');
+    }
+
+    try {
+      // Check if user exists
+      const { data: existingUser, error: selectError } = await this.supabase
+        .from('users')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (selectError && selectError.code !== 'PGRST116') {
+        // PGRST116 is "no rows returned", which is expected for new users
+        throw selectError;
+      }
+
+      if (existingUser) {
+        console.log('[SupabaseDataManager] 👤 User exists:', userId);
+        return existingUser;
+      }
+
+      // Create new user
+      const { data: newUser, error: insertError } = await this.supabase
+        .from('users')
+        .insert([
+          {
+            user_id: userId,
+            session_order: sessionOrder,
+          },
+        ])
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      console.log('[SupabaseDataManager] ✨ New user created:', userId);
+      return newUser;
+    } catch (error) {
+      console.error('[SupabaseDataManager] Error initializing user:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update user's session order
+   */
+  async updateUserSessionOrder(userId, sessionOrder) {
+    if (!this.isInitialized) return false;
+
+    try {
+      const { error } = await this.supabase
+        .from('users')
+        .update({ session_order: sessionOrder })
+        .eq('user_id', userId);
+
+      if (error) throw error;
+
+      console.log('[SupabaseDataManager] 📝 Session order updated for:', userId);
+      return true;
+    } catch (error) {
+      console.error('[SupabaseDataManager] Error updating session order:', 
+        error);
+      return false;
+    }
+  }
+
+  /**
+   * Create a new session
+   */
+  async createSession(sessionData) {
+    if (!this.isInitialized) {
+      throw new Error('SupabaseDataManager not initialized');
+    }
+
+    try {
+      const { data: session, error } = await this.supabase
+        .from('sessions')
+        .insert([
+          {
+            user_id: sessionData.userId,
+            session_id: sessionData.sessionId,
+            session_type: sessionData.permutationId + 1, // 1-9
+            permutation_id: sessionData.permutationId,
+            pacman_speed: sessionData.speedConfig.pacman,
+            ghost_speed: sessionData.speedConfig.ghost,
+            resumed: sessionData.resumed || false,
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      this.currentSessionId = session.id;
+      console.log('[SupabaseDataManager] 🎮 Session created:', session.id);
+
+      // Create initial session summary
+      await this.createSessionSummary(session.id, sessionData.userId);
+
+      return session;
+    } catch (error) {
+      console.error('[SupabaseDataManager] Error creating session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create session summary record
+   */
+  async createSessionSummary(sessionId, userId) {
+    try {
+      const { data: summary, error } = await this.supabase
+        .from('session_summaries')
+        .insert([
+          {
+            session_id: sessionId,
+            user_id: userId,
+          },
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      console.log('[SupabaseDataManager] 📊 Session summary created');
+      return summary;
+    } catch (error) {
+      console.error('[SupabaseDataManager] Error creating session summary:', 
+        error);
+      throw error;
+    }
+  }
+
+  /**
+   * Log an event during gameplay
+   */
+  async logEvent(eventData) {
+    if (!this.isInitialized || !this.currentSessionId) return false;
+
+    try {
+      const { error } = await this.supabase
+        .from('events')
+        .insert([
+          {
+            session_id: this.currentSessionId,
+            user_id: eventData.userId,
+            event_type: eventData.type,
+            event_time: eventData.time,
+            event_data: eventData.data || {},
+          },
+        ]);
+
+      if (error) throw error;
+
+      return true;
+    } catch (error) {
+      console.error('[SupabaseDataManager] Error logging event:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Update session summary with aggregated metrics
+   */
+  async updateSessionSummary(summaryData) {
+    if (!this.isInitialized || !this.currentSessionId) return false;
+
+    try {
+      const { error } = await this.supabase
+        .from('session_summaries')
+        .update({
+          total_ghosts_eaten: summaryData.totalGhostsEaten,
+          total_pellets_eaten: summaryData.totalPelletsEaten,
+          total_pacdots_eaten: summaryData.totalPacdotsEaten || 0,
+          total_power_pellets_eaten: summaryData.totalPowerPelletsEaten || 0,
+          total_fruits_eaten: summaryData.totalFruitsEaten || 0,
+          total_deaths: summaryData.totalDeaths,
+          successful_turns: summaryData.successfulTurns,
+          total_turns: summaryData.totalTurns,
+        })
+        .eq('session_id', this.currentSessionId);
+
+      if (error) throw error;
+
+      return true;
+    } catch (error) {
+      console.error('[SupabaseDataManager] Error updating session summary:', 
+        error);
+      return false;
+    }
+  }
+
+  /**
+   * Complete a session
+   */
+  async completeSession(gameTime) {
+    if (!this.isInitialized || !this.currentSessionId) return false;
+
+    try {
+      const { error } = await this.supabase
+        .from('sessions')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          total_game_time: gameTime,
+        })
+        .eq('id', this.currentSessionId);
+
+      if (error) throw error;
+
+      console.log('[SupabaseDataManager] ✅ Session completed:', 
+        this.currentSessionId);
+      this.currentSessionId = null;
+      return true;
+    } catch (error) {
+      console.error('[SupabaseDataManager] Error completing session:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get user's session data for local compatibility
+   */
+  async getUserData(userId) {
+    if (!this.isInitialized) return null;
+
+    try {
+      // Get user with session order
+      const { data: user, error: userError } = await this.supabase
+        .from('users')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+
+      if (userError) throw userError;
+
+      // Get completed sessions count
+      const { data: completedSessions, error: sessionsError } = await this
+        .supabase
+        .from('sessions')
+        .select('session_id')
+        .eq('user_id', userId)
+        .eq('status', 'completed');
+
+      if (sessionsError) throw sessionsError;
+
+      return {
+        userId,
+        sessionOrder: user.session_order,
+        completedSessionsCount: completedSessions.length,
+      };
+    } catch (error) {
+      console.error('[SupabaseDataManager] Error getting user data:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Export all user data for research analysis
+   */
+  async exportUserData(userId) {
+    if (!this.isInitialized) return null;
+
+    try {
+      // Get all sessions with summaries
+      const { data: sessions, error } = await this.supabase
+        .from('sessions')
+        .select(`
+          *,
+          session_summaries (*),
+          events (*)
+        `)
+        .eq('user_id', userId)
+        .order('session_id');
+
+      if (error) throw error;
+
+      return {
+        userId,
+        sessions,
+        exportTimestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error('[SupabaseDataManager] Error exporting data:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Get aggregated research data (for researchers)
+   */
+  async getResearchData(filters = {}) {
+    if (!this.isInitialized) return null;
+
+    try {
+      let query = this.supabase
+        .from('sessions')
+        .select(`
+          *,
+          session_summaries (*),
+          users!inner (user_id)
+        `);
+
+      // Apply filters
+      if (filters.sessionType) {
+        query = query.eq('session_type', filters.sessionType);
+      }
+      if (filters.pacmanSpeed) {
+        query = query.eq('pacman_speed', filters.pacmanSpeed);
+      }
+      if (filters.ghostSpeed) {
+        query = query.eq('ghost_speed', filters.ghostSpeed);
+      }
+      if (filters.status) {
+        query = query.eq('status', filters.status);
+      }
+
+      const { data, error } = await query.order('created_at');
+
+      if (error) throw error;
+
+      return data;
+    } catch (error) {
+      console.error('[SupabaseDataManager] Error getting research data:', 
+        error);
+      return null;
+    }
+  }
+
+  /**
+   * Check connection status
+   */
+  async testConnection() {
+    if (!this.isInitialized) return false;
+
+    try {
+      const { data, error } = await this.supabase
+        .from('users')
+        .select('count')
+        .limit(1);
+
+      return !error;
+    } catch (error) {
+      console.error('[SupabaseDataManager] Connection test failed:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get database health stats
+   */
+  async getHealthStats() {
+    if (!this.isInitialized) return null;
+
+    try {
+      const [usersResult, sessionsResult, eventsResult] = await Promise.all([
+        this.supabase.from('users').select('count'),
+        this.supabase.from('sessions').select('count'),
+        this.supabase.from('events').select('count'),
+      ]);
+
+      return {
+        totalUsers: usersResult.data?.[0]?.count || 0,
+        totalSessions: sessionsResult.data?.[0]?.count || 0,
+        totalEvents: eventsResult.data?.[0]?.count || 0,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error('[SupabaseDataManager] Error getting health stats:', 
+        error);
+      return null;
+    }
+  }
+}
+
+// Export for both browser and Node.js environments
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = SupabaseDataManager;
+} else {
+  window.SupabaseDataManager = SupabaseDataManager;
+}
 class VisualizationDashboard {
   constructor(experimentManager, sessionManager, exportManager) {
     this.experimentManager = experimentManager;

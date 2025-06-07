@@ -1,0 +1,16 @@
+FROM nginx:alpine
+
+# Copy the application files to nginx html directory
+COPY . /usr/share/nginx/html/
+
+# Copy nginx configuration optimized for reverse proxy
+COPY nginx-proxy.conf /etc/nginx/nginx.conf
+
+# Install curl for health checks
+RUN apk add --no-cache curl
+
+# Expose only HTTP port (reverse proxy handles HTTPS)
+EXPOSE 80
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]

@@ -1,0 +1,55 @@
+services:
+  # For direct HTTPS access
+  pacman-research-https:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    container_name: pacman-research-https
+    ports:
+      - "8080:80"     # HTTP port (redirects to HTTPS)
+      - "8443:443"    # HTTPS port
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-k", "-f", "https://localhost:443"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # For reverse proxy usage (recommended)
+  pacman-research-proxy:
+    build: 
+      context: .
+      dockerfile: Dockerfile.proxy
+    container_name: pacman-research-proxy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - harbor_traefik-public
+    labels:
+      # Enable Traefik
+      - "traefik.enable=true"
+      
+      # HTTP Router (no HTTPS redirect)
+      - "traefik.http.routers.pacman.rule=Host(`pacman.furkankucuk.net`)"
+      - "traefik.http.routers.pacman.entrypoints=web"
+      
+      # Service
+      - "traefik.http.services.pacman.loadbalancer.server.port=80"
+      
+      # Basic security headers (without SSL-specific ones)
+      - "traefik.http.middlewares.pacman-headers.headers.frameDeny=true"
+      - "traefik.http.middlewares.pacman-headers.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.pacman-headers.headers.contentTypeNosniff=true"
+      
+      # Apply security headers to HTTP router
+      - "traefik.http.routers.pacman.middlewares=pacman-headers"
+
+networks:
+  harbor_traefik-public:
+    external: true

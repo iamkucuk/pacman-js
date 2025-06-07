@@ -108,7 +108,7 @@ const sessionType1Data = await experimentManager.getResearchData({
 
 #### Direct Supabase Access
 You can also access Supabase directly using the project credentials:
-- **Project URL**: `https://gjfbybkyoxtidnsgsdbe.supabase.co`
+- **Project URL**: `https://kozbxghtgtnoldywzdmg.supabase.co`
 - **Database**: Available via Supabase dashboard
 - **Tables**: `users`, `sessions`, `session_summaries`, `events`
 
@@ -268,6 +268,6 @@ For technical issues or questions about the Supabase integration:
 ---
 
 **Project**: Pac-Man Speed Research Study  
-**Database**: Supabase (gjfbybkyoxtidnsgsdbe)  
+**Database**: Supabase (kozbxghtgtnoldywzdmg)  
 **Integration Date**: June 2025  
 **Version**: 1.0

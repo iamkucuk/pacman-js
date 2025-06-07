@@ -5,8 +5,8 @@
 
 class SupabaseDataManager {
   constructor() {
-    this.supabaseUrl = 'https://gjfbybkyoxtidnsgsdbe.supabase.co';
-    this.supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdqZmJ5Ymt5b3h0aWRuc2dzZGJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkyNzk0MDEsImV4cCI6MjA2NDg1NTQwMX0.Nzr5YVU62HQzPAKMEymUnPWpnK2MM0tBFJ82uZvuTbU';
+    this.supabaseUrl = 'https://kozbxghtgtnoldywzdmg.supabase.co';
+    this.supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvemJ4Z2h0Z3Rub2xkeXd6ZG1nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDkzMDYzODMsImV4cCI6MjA2NDg4MjM4M30.CEaWBTEWM_oj0vtgyQSHWRoLzZ98mYIGuhEtjeGNaC4';
     this.supabase = null;
     this.isInitialized = false;
     this.currentSessionId = null;

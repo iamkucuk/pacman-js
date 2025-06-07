@@ -1249,7 +1249,7 @@ class GameCoordinator {
     }
   }
 
-  handleUserIdConfirmation() {
+  async handleUserIdConfirmation() {
     const userIdInput = document.getElementById('main-user-id-input');
     const userIdError = document.getElementById('user-id-error');
     const userIdSection = document.getElementById('user-id-section');
@@ -1272,7 +1272,7 @@ class GameCoordinator {
         throw new Error('System not ready. Please refresh the page.');
       }
 
-      this.experimentManager.initializeUser(userId);
+      await this.experimentManager.initializeUser(userId);
       
       // Check if user has completed all sessions
       const completedSessions = this.experimentManager.getCompletedSessionsCount();
@@ -1283,7 +1283,7 @@ class GameCoordinator {
       }
 
       // Start next session
-      const session = this.experimentManager.startSession();
+      const session = await this.experimentManager.startSession();
       
       // Update display elements
       this.updateSessionDisplay(session);
@@ -2527,9 +2527,9 @@ class GameCoordinator {
   /**
    * Continues to next session directly (used by session transition overlay)
    */
-  continueToNextSession() {
+  async continueToNextSession() {
     try {
-      const session = this.experimentManager.startSession();
+      const session = await this.experimentManager.startSession();
       
       // Update the session display
       this.updateSessionDisplay(session);
@@ -3866,8 +3866,23 @@ class ExperimentManager {
       throw new Error('All sessions completed');
     }
 
+    // Debug logging to help identify the issue
+    console.log('[ExperimentManager] Debug - sessionOrder:', this.sessionOrder);
+    console.log('[ExperimentManager] Debug - completedSessions:', completedSessions);
+    
     const permutationId = this.sessionOrder[completedSessions];
+    console.log('[ExperimentManager] Debug - permutationId:', permutationId);
+    
+    if (permutationId === undefined) {
+      throw new Error('Session order not properly initialized. Please refresh and try again.');
+    }
+    
     const config = this.PERMUTATIONS[permutationId];
+    console.log('[ExperimentManager] Debug - config:', config);
+    
+    if (!config) {
+      throw new Error(`Invalid permutation ID: ${permutationId}`);
+    }
 
     this.currentSession = {
       userId: this.userId,
@@ -4167,7 +4182,7 @@ class ExperimentManager {
     // Save to CSV after session completion
     this.saveSessionToCSV(this.currentMetrics);
 
-    this.saveUserData();
+    await this.saveUserData();
     this.clearCurrentSession();
 
     this.isExperimentActive = false;

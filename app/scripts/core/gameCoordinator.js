@@ -139,7 +139,7 @@ class GameCoordinator {
     }
   }
 
-  handleUserIdConfirmation() {
+  async handleUserIdConfirmation() {
     const userIdInput = document.getElementById('main-user-id-input');
     const userIdError = document.getElementById('user-id-error');
     const userIdSection = document.getElementById('user-id-section');
@@ -162,7 +162,7 @@ class GameCoordinator {
         throw new Error('System not ready. Please refresh the page.');
       }
 
-      this.experimentManager.initializeUser(userId);
+      await this.experimentManager.initializeUser(userId);
       
       // Check if user has completed all sessions
       const completedSessions = this.experimentManager.getCompletedSessionsCount();
@@ -173,7 +173,7 @@ class GameCoordinator {
       }
 
       // Start next session
-      const session = this.experimentManager.startSession();
+      const session = await this.experimentManager.startSession();
       
       // Update display elements
       this.updateSessionDisplay(session);
@@ -1417,9 +1417,9 @@ class GameCoordinator {
   /**
    * Continues to next session directly (used by session transition overlay)
    */
-  continueToNextSession() {
+  async continueToNextSession() {
     try {
-      const session = this.experimentManager.startSession();
+      const session = await this.experimentManager.startSession();
       
       // Update the session display
       this.updateSessionDisplay(session);

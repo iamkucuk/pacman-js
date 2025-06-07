@@ -236,6 +236,7 @@ class SupabaseDataManager {
           total_deaths: summaryData.totalDeaths,
           successful_turns: summaryData.successfulTurns,
           total_turns: summaryData.totalTurns,
+          final_score: summaryData.finalScore || 0,
         })
         .eq('session_id', this.currentSessionId);
 
@@ -250,9 +251,108 @@ class SupabaseDataManager {
   }
 
   /**
+   * Update session summary with score statistics
+   */
+  async updateScoreStatistics(userId) {
+    if (!this.isInitialized) return false;
+
+    try {
+      // Get all completed sessions for this user with scores
+      const { data: sessions, error: sessionsError } = await this.supabase
+        .from('sessions')
+        .select('final_score')
+        .eq('user_id', userId)
+        .eq('status', 'completed')
+        .not('final_score', 'is', null);
+
+      if (sessionsError) throw sessionsError;
+
+      if (!sessions || sessions.length === 0) {
+        console.log('[SupabaseDataManager] No completed sessions with scores found');
+        return true;
+      }
+
+      const scores = sessions.map(s => s.final_score).filter(score => score !== null);
+      
+      if (scores.length === 0) {
+        console.log('[SupabaseDataManager] No valid scores found');
+        return true;
+      }
+
+      // Calculate statistics
+      const highestScore = Math.max(...scores);
+      const lowestScore = Math.min(...scores);
+      const averageScore = scores.reduce((a, b) => a + b, 0) / scores.length;
+      
+      // Calculate standard deviation
+      const variance = scores.reduce((acc, score) => acc + Math.pow(score - averageScore, 2), 0) / scores.length;
+      const stdDev = Math.sqrt(variance);
+
+      console.log('[SupabaseDataManager] 📊 Score Statistics:', {
+        count: scores.length,
+        highest: highestScore,
+        lowest: lowestScore,
+        average: averageScore.toFixed(2),
+        stdDev: stdDev.toFixed(2)
+      });
+
+      // Update all session summaries for this user with the statistics
+      const { error: updateError } = await this.supabase
+        .from('session_summaries')
+        .update({
+          highest_score: highestScore,
+          lowest_score: lowestScore,
+          average_score: parseFloat(averageScore.toFixed(2)),
+          score_std_dev: parseFloat(stdDev.toFixed(2)),
+        })
+        .in('session_id', 
+          sessions.map(session => 
+            // We need to get session IDs, so let's do this differently
+            this.supabase
+              .from('sessions')
+              .select('id')
+              .eq('user_id', userId)
+              .eq('status', 'completed')
+          )
+        );
+
+      // Actually, let's do this with a different approach - update via user sessions
+      const { data: userSessions, error: userSessionsError } = await this.supabase
+        .from('sessions')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('status', 'completed');
+
+      if (userSessionsError) throw userSessionsError;
+
+      if (userSessions && userSessions.length > 0) {
+        const sessionIds = userSessions.map(s => s.id);
+        
+        const { error: finalUpdateError } = await this.supabase
+          .from('session_summaries')
+          .update({
+            highest_score: highestScore,
+            lowest_score: lowestScore,
+            average_score: parseFloat(averageScore.toFixed(2)),
+            score_std_dev: parseFloat(stdDev.toFixed(2)),
+          })
+          .in('session_id', sessionIds);
+
+        if (finalUpdateError) throw finalUpdateError;
+      }
+
+      console.log('[SupabaseDataManager] ✅ Score statistics updated for user:', userId);
+      return true;
+    } catch (error) {
+      console.error('[SupabaseDataManager] Error updating score statistics:', error);
+      return false;
+    }
+  }
+
+  /**
    * Complete a session
    */
-  async completeSession(gameTime) {
+  async completeSession(gameTime, finalScore = 0) {
     if (!this.isInitialized || !this.currentSessionId) return false;
 
     try {
@@ -262,6 +362,7 @@ class SupabaseDataManager {
           status: 'completed',
           completed_at: new Date().toISOString(),
           total_game_time: gameTime,
+          final_score: finalScore,
         })
         .eq('id', this.currentSessionId);
 

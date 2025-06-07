@@ -1889,8 +1889,8 @@ class GameCoordinator {
         }
       }));
 
-      // End the session in experiment manager
-      this.experimentManager.endSession();
+      // End the session in experiment manager with final score
+      this.experimentManager.endSession(this.points);
       
       // Dispatch session ended event for other components
       window.dispatchEvent(new CustomEvent('experimentSessionEnded', {

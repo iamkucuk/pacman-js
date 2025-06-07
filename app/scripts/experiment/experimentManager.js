@@ -566,7 +566,7 @@ class ExperimentManager {
     return Math.max(0, totalTime);
   }
 
-  async endSession() {
+  async endSession(finalScore = 0) {
     if (!this.isExperimentActive || !this.currentMetrics) return;
 
     // Ensure timer is properly stopped and calculate final time
@@ -575,6 +575,7 @@ class ExperimentManager {
     }
 
     this.currentMetrics.summary.gameTime = this.getGameplayTime();
+    this.currentMetrics.summary.finalScore = finalScore;
     this.metrics.push(this.currentMetrics);
 
     // Complete session in Supabase
@@ -590,10 +591,15 @@ class ExperimentManager {
           totalDeaths: this.currentMetrics.summary.totalDeaths,
           successfulTurns: this.currentMetrics.summary.successfulTurns,
           totalTurns: this.currentMetrics.summary.totalTurns,
+          finalScore: finalScore,
         });
 
-        // Mark session as completed
-        await this.supabaseManager.completeSession(this.currentMetrics.summary.gameTime);
+        // Mark session as completed with final score
+        await this.supabaseManager.completeSession(this.currentMetrics.summary.gameTime, finalScore);
+        
+        // Update score statistics for all user sessions
+        await this.supabaseManager.updateScoreStatistics(this.userId);
+        
         console.log('[ExperimentManager] ✅ Session completed in Supabase');
       } catch (error) {
         console.error('[ExperimentManager] Failed to complete Supabase session:', error);

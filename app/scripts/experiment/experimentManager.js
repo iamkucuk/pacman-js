@@ -2,15 +2,15 @@ class ExperimentManager {
   constructor() {
     this.SPEED_CONFIGS = {
       pacman: {
-        slow: 0.3,    // Very slow - 30% of normal speed
-        normal: 1.0,  // Normal baseline
-        fast: 2.5     // Very fast - 250% of normal speed
+        slow: 0.3, // Very slow - 30% of normal speed
+        normal: 1.0, // Normal baseline
+        fast: 2.5, // Very fast - 250% of normal speed
       },
       ghost: {
-        slow: 0.2,    // Very slow - 20% of normal speed  
-        normal: 1.0,  // Normal baseline
-        fast: 3.0     // Very fast - 300% of normal speed
-      }
+        slow: 0.2, // Very slow - 20% of normal speed
+        normal: 1.0, // Normal baseline
+        fast: 3.0, // Very fast - 300% of normal speed
+      },
     };
 
     this.PERMUTATIONS = this.generatePermutations();
@@ -27,14 +27,14 @@ class ExperimentManager {
     const permutations = [];
     const pacmanSpeeds = ['slow', 'normal', 'fast'];
     const ghostSpeeds = ['slow', 'normal', 'fast'];
-    
+
     let id = 0;
     for (const pacmanSpeed of pacmanSpeeds) {
       for (const ghostSpeed of ghostSpeeds) {
         permutations.push({
           id: id++,
           pacman: pacmanSpeed,
-          ghost: ghostSpeed
+          ghost: ghostSpeed,
         });
       }
     }
@@ -48,7 +48,7 @@ class ExperimentManager {
 
     this.userId = userId.trim();
     this.loadUserData();
-    
+
     if (this.sessionOrder.length === 0) {
       this.sessionOrder = this.generateRandomizedOrder();
       this.saveUserData();
@@ -59,7 +59,7 @@ class ExperimentManager {
     if (this.sessionManager) {
       return this.sessionManager.generateAdvancedRandomization(this.userId);
     }
-    
+
     // Fallback to simple randomization
     const order = [...Array(9).keys()];
     for (let i = order.length - 1; i > 0; i--) {
@@ -88,11 +88,11 @@ class ExperimentManager {
 
     const permutationId = this.sessionOrder[completedSessions];
     const config = this.PERMUTATIONS[permutationId];
-    
+
     this.currentSession = {
       userId: this.userId,
       sessionId: completedSessions + 1,
-      permutationId: permutationId,
+      permutationId,
       speedConfig: config,
       timestamp: new Date(),
       events: [],
@@ -102,10 +102,10 @@ class ExperimentManager {
         totalDeaths: 0,
         successfulTurns: 0,
         totalTurns: 0,
-        gameTime: 0
+        gameTime: 0,
       },
       resumed: false,
-      startTime: Date.now()
+      startTime: Date.now(),
     };
 
     this.currentMetrics = this.currentSession;
@@ -118,36 +118,36 @@ class ExperimentManager {
     console.log('[ExperimentManager] 🎯 About to apply speed configuration:', config);
     this.applySpeedConfiguration(config);
     this.saveCurrentSession();
-    
+
     return this.currentSession;
   }
 
   canResumeSession(savedState) {
     const age = Date.now() - (savedState.lastSaved || savedState.startTime || 0);
     const maxAge = 60 * 60 * 1000; // 1 hour
-    
-    return age < maxAge && 
-           savedState.userId === this.userId && 
-           savedState.sessionId > 0 && 
-           savedState.sessionId <= 9;
+
+    return age < maxAge
+           && savedState.userId === this.userId
+           && savedState.sessionId > 0
+           && savedState.sessionId <= 9;
   }
 
   resumeSession(savedState) {
     console.log('[ExperimentManager] Resuming previous session:', savedState.sessionId);
-    
+
     this.currentSession = {
       ...savedState,
       resumed: true,
-      resumeTime: Date.now()
+      resumeTime: Date.now(),
     };
-    
+
     this.currentMetrics = this.currentSession;
     this.gameStartTime = savedState.startTime || Date.now();
     this.isExperimentActive = true;
 
     this.applySpeedConfiguration(savedState.speedConfig);
     this.saveCurrentSession();
-    
+
     return this.currentSession;
   }
 
@@ -167,10 +167,10 @@ class ExperimentManager {
       detail: {
         pacmanMultiplier,
         ghostMultiplier,
-        config
-      }
+        config,
+      },
     });
-    
+
     window.dispatchEvent(event);
     console.log('[ExperimentManager] ✅ Speed config event dispatched');
 
@@ -180,7 +180,7 @@ class ExperimentManager {
       window.gameCoordinator.speedController.applySpeedConfiguration({
         pacmanMultiplier,
         ghostMultiplier,
-        config
+        config,
       });
     }
   }
@@ -201,13 +201,13 @@ class ExperimentManager {
         type,
         time: Date.now() - this.gameStartTime,
         timestamp: new Date(),
-        ...data
+        ...data,
       };
 
       this.currentMetrics.events.push(event);
       this.updateSummary(type, data);
       this.saveCurrentSession();
-      
+
       return true;
     } catch (error) {
       console.error('[ExperimentManager] Error logging event:', error);
@@ -217,7 +217,7 @@ class ExperimentManager {
 
   validateEventData(type, data) {
     const validTypes = ['ghostEaten', 'pelletEaten', 'death', 'turnComplete'];
-    
+
     if (!validTypes.includes(type)) {
       console.warn(`[ExperimentManager] Unknown event type: ${type}`);
       return false;
@@ -235,21 +235,21 @@ class ExperimentManager {
           return false;
         }
         break;
-        
+
       case 'pelletEaten':
         if (!data.type || !['pacdot', 'powerPellet', 'fruit'].includes(data.type)) {
           console.warn('[ExperimentManager] pelletEaten event requires valid type');
           return false;
         }
         break;
-        
+
       case 'death':
         if (!data.cause || typeof data.cause !== 'string') {
           console.warn('[ExperimentManager] death event requires valid cause');
           return false;
         }
         break;
-        
+
       case 'turnComplete':
         if (typeof data.success !== 'boolean') {
           console.warn('[ExperimentManager] turnComplete event requires boolean success');
@@ -264,8 +264,8 @@ class ExperimentManager {
   updateSummary(type, data) {
     if (!this.currentMetrics) return;
 
-    const summary = this.currentMetrics.summary;
-    
+    const { summary } = this.currentMetrics;
+
     switch (type) {
       case 'ghostEaten':
         summary.totalGhostsEaten++;
@@ -287,46 +287,46 @@ class ExperimentManager {
 
   startGameplayTimer() {
     if (!this.isExperimentActive || this.gameplayStarted) return;
-    
+
     this.gameStartTime = Date.now();
     this.gameplayStarted = true;
     this.gameplayPausedTime = 0;
     this.lastPauseStart = null;
-    
+
     console.log('[ExperimentManager] ⏱️ Gameplay timer started');
   }
 
   pauseGameplayTimer() {
     if (!this.gameplayStarted || this.lastPauseStart) return;
-    
+
     this.lastPauseStart = Date.now();
     console.log('[ExperimentManager] ⏸️ Gameplay timer paused');
   }
 
   resumeGameplayTimer() {
     if (!this.gameplayStarted || !this.lastPauseStart) return;
-    
+
     const pauseDuration = Date.now() - this.lastPauseStart;
     this.gameplayPausedTime += pauseDuration;
     this.lastPauseStart = null;
-    
-    console.log('[ExperimentManager] ▶️ Gameplay timer resumed (paused for ' + pauseDuration + 'ms)');
+
+    console.log(`[ExperimentManager] ▶️ Gameplay timer resumed (paused for ${pauseDuration}ms)`);
   }
 
   getGameplayTime() {
     if (!this.gameStartTime) return 0;
-    
-    let currentTime = Date.now();
+
+    const currentTime = Date.now();
     let totalTime = currentTime - this.gameStartTime;
-    
+
     // Subtract total paused time
     totalTime -= this.gameplayPausedTime;
-    
+
     // If currently paused, subtract current pause duration
     if (this.lastPauseStart) {
       totalTime -= (currentTime - this.lastPauseStart);
     }
-    
+
     return Math.max(0, totalTime);
   }
 
@@ -337,13 +337,16 @@ class ExperimentManager {
     if (this.lastPauseStart) {
       this.resumeGameplayTimer(); // Close any open pause
     }
-    
+
     this.currentMetrics.summary.gameTime = this.getGameplayTime();
     this.metrics.push(this.currentMetrics);
-    
+
+    // Save to CSV after session completion
+    this.saveSessionToCSV(this.currentMetrics);
+
     this.saveUserData();
     this.clearCurrentSession();
-    
+
     this.isExperimentActive = false;
     this.currentMetrics = null;
     this.gameStartTime = null;
@@ -362,12 +365,12 @@ class ExperimentManager {
 
   getCurrentSessionInfo() {
     if (!this.currentSession) return null;
-    
+
     return {
       sessionId: this.currentSession.sessionId,
       completedSessions: this.getCompletedSessionsCount(),
       totalSessions: 9,
-      speedConfig: this.currentSession.speedConfig
+      speedConfig: this.currentSession.speedConfig,
     };
   }
 
@@ -383,7 +386,7 @@ class ExperimentManager {
         sessionOrder: this.sessionOrder,
         metrics: this.metrics,
         lastUpdated: new Date(),
-        version: '1.0'
+        version: '1.0',
       };
 
       const serialized = JSON.stringify(userData);
@@ -410,16 +413,15 @@ class ExperimentManager {
       const stored = localStorage.getItem(`experiment_${this.userId}`);
       if (stored) {
         const userData = JSON.parse(stored);
-        
+
         if (this.validateUserData(userData)) {
           this.sessionOrder = userData.sessionOrder || [];
           this.metrics = userData.metrics || [];
           return true;
-        } else {
-          console.warn('[ExperimentManager] Invalid user data format, resetting');
-          this.resetUserData();
-          return false;
         }
+        console.warn('[ExperimentManager] Invalid user data format, resetting');
+        this.resetUserData();
+        return false;
       }
       return true;
     } catch (error) {
@@ -455,7 +457,7 @@ class ExperimentManager {
   resetUserData() {
     this.sessionOrder = [];
     this.metrics = [];
-    
+
     if (this.userId) {
       localStorage.removeItem(`experiment_${this.userId}`);
       localStorage.removeItem(`current_session_${this.userId}`);
@@ -469,7 +471,7 @@ class ExperimentManager {
 
   loadCurrentSession() {
     if (!this.userId) return null;
-    
+
     const stored = localStorage.getItem(`current_session_${this.userId}`);
     if (stored) {
       this.currentSession = JSON.parse(stored);
@@ -491,26 +493,27 @@ class ExperimentManager {
       sessionOrder: this.sessionOrder,
       metrics: this.metrics,
       exportTimestamp: new Date(),
-      totalSessions: this.metrics.length
+      totalSessions: this.metrics.length,
     };
 
     if (format === 'csv') {
       return this.convertToCSV(exportData);
     }
-    
+
     return JSON.stringify(exportData, null, 2);
   }
 
   convertToCSV(data) {
     const headers = [
-      'userId', 'sessionId', 'permutationId', 'pacmanSpeed', 'ghostSpeed',
-      'totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths', 
-      'successfulTurns', 'totalTurns', 'gameTime', 'timestamp'
+      'userId', 'sessionId', 'sessionType', 'permutationId', 'pacmanSpeed', 'ghostSpeed',
+      'totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths',
+      'successfulTurns', 'totalTurns', 'gameTime', 'timestamp',
     ];
 
     const rows = data.metrics.map(session => [
       session.userId,
       session.sessionId,
+      session.permutationId + 1, // Session type (1-9)
       session.permutationId,
       session.speedConfig.pacman,
       session.speedConfig.ghost,
@@ -520,20 +523,120 @@ class ExperimentManager {
       session.summary.successfulTurns,
       session.summary.totalTurns,
       session.summary.gameTime,
-      session.timestamp
+      session.timestamp,
     ]);
 
     return [headers, ...rows].map(row => row.join(',')).join('\n');
   }
 
+  saveSessionToCSV(sessionData) {
+    if (!sessionData || !this.userId) {
+      console.warn('[ExperimentManager] Cannot save session to CSV - missing data');
+      return false;
+    }
+
+    try {
+      const csvData = this.convertSessionToCSVRow(sessionData);
+      const filename = `pacman_experiment_${this.userId}.csv`;
+
+      // Check if this is the first session for this user
+      const existingCSV = localStorage.getItem(`csv_${this.userId}`);
+      let fullCSV;
+
+      if (!existingCSV) {
+        // First session - include headers
+        const headers = [
+          'userId', 'sessionId', 'sessionType', 'permutationId', 'pacmanSpeed', 'ghostSpeed',
+          'totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths',
+          'successfulTurns', 'totalTurns', 'gameTime', 'timestamp',
+        ];
+        fullCSV = `${headers.join(',')}\n${csvData}`;
+      } else {
+        // Append to existing CSV
+        fullCSV = `${existingCSV}\n${csvData}`;
+      }
+
+      // Save to localStorage for persistence
+      localStorage.setItem(`csv_${this.userId}`, fullCSV);
+
+      // Also trigger download
+      this.downloadCSV(fullCSV, filename);
+
+      console.log('[ExperimentManager] Session saved to CSV:', filename);
+      return true;
+    } catch (error) {
+      console.error('[ExperimentManager] Error saving session to CSV:', error);
+      return false;
+    }
+  }
+
+  convertSessionToCSVRow(session) {
+    return [
+      session.userId,
+      session.sessionId,
+      session.permutationId + 1, // Session type (1-9)
+      session.permutationId,
+      session.speedConfig.pacman,
+      session.speedConfig.ghost,
+      session.summary.totalGhostsEaten,
+      session.summary.totalPelletsEaten,
+      session.summary.totalDeaths,
+      session.summary.successfulTurns,
+      session.summary.totalTurns,
+      session.summary.gameTime,
+      session.timestamp,
+    ].join(',');
+  }
+
+  downloadCSV(csvContent, filename) {
+    try {
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+
+      if (link.download !== undefined) {
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        console.log('[ExperimentManager] CSV file downloaded:', filename);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('[ExperimentManager] Error downloading CSV:', error);
+      return false;
+    }
+  }
+
+  exportUserCSV() {
+    if (!this.userId) {
+      console.warn('[ExperimentManager] Cannot export CSV - no user ID');
+      return false;
+    }
+
+    const csvData = localStorage.getItem(`csv_${this.userId}`);
+    if (!csvData) {
+      console.warn('[ExperimentManager] No CSV data found for user:', this.userId);
+      return false;
+    }
+
+    const filename = `pacman_experiment_${this.userId}_complete.csv`;
+    return this.downloadCSV(csvData, filename);
+  }
+
   getDebugInfo() {
     return {
       userId: this.userId,
-      currentSession: this.currentSession?.sessionId || null,
+      currentSession: (this.currentSession && this.currentSession.sessionId) || null,
       completedSessions: this.getCompletedSessionsCount(),
       remainingSessions: this.getRemainingSessionsCount(),
       sessionOrder: this.sessionOrder,
-      isExperimentActive: this.isExperimentActive
+      isExperimentActive: this.isExperimentActive,
     };
   }
 }

@@ -27,37 +27,49 @@ class ExperimentUI {
 
     // Create a minimal debug-only interface since main menu handles user input
     const baseStyle = 'position: fixed; top: 10px; left: 10px; z-index: 1000;';
-    const containerStyle = 'background: rgba(0,0,0,0.8); color: white; ' +
-      'padding: 12px;';
-    const sizeStyle = 'border-radius: 8px; font-family: monospace; ' +
-      'max-width: 350px; min-width: 280px;';
+    const containerStyle = 'background: rgba(0,0,0,0.8); color: white; '
+      + 'padding: 12px;';
+    const sizeStyle = 'border-radius: 8px; font-family: monospace; '
+      + 'max-width: 350px; min-width: 280px;';
     const fontStyle = 'font-size: 12px; line-height: 1.4;';
     const showStyle = this.DEBUG ? '' : 'display: none;';
-    
+
     const interfaceHTML = `
-      <div id="experiment-interface" style="${baseStyle} ${containerStyle} ${sizeStyle} ${fontStyle} ${showStyle}">
+      <div id="experiment-interface" style="${baseStyle} ${containerStyle} 
+        ${sizeStyle} ${fontStyle} ${showStyle}">
         <div id="experiment-session" style="display: none;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+          <div style="display: flex; justify-content: space-between; 
+            align-items: center; margin-bottom: 5px;">
             <h4 style="margin: 0; color: #ffff00; font-size: 12px;">
               Live Metrics
             </h4>
-            <button id="minimize-metrics-btn" style="background: none; border: none; color: #ffff00; cursor: pointer; font-size: 14px; padding: 0; line-height: 1;" title="Minimize">
+            <button id="minimize-metrics-btn" style="background: none; 
+              border: none; color: #ffff00; cursor: pointer; font-size: 14px; 
+              padding: 0; line-height: 1;" title="Minimize">
               ▼
             </button>
           </div>
           <div id="metrics-content" style="display: block;">
-          <div id="session-info" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          <div id="session-info" style="margin-bottom: 8px; font-size: 11px; 
+            background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
           </div>
-          <div id="speed-config" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          <div id="speed-config" style="margin-bottom: 8px; font-size: 11px; 
+            background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
           </div>
-          <div id="metrics-display" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          <div id="metrics-display" style="margin-bottom: 8px; font-size: 11px; 
+            background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
           </div>
-          <div id="progress-info" style="margin-bottom: 8px; font-size: 11px; background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
+          <div id="progress-info" style="margin-bottom: 8px; font-size: 11px; 
+            background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px;">
           </div>
-          <button id="end-session-btn" style="width: 100%; padding: 8px; background: #ff4444; border: none; border-radius: 4px; cursor: pointer; font-size: 11px; font-weight: bold; color: white;">
+          <button id="end-session-btn" style="width: 100%; padding: 8px; 
+            background: #ff4444; border: none; border-radius: 4px; 
+            cursor: pointer; font-size: 11px; font-weight: bold; color: white;">
             End Session
           </button>
-          <button id="export-data-btn" style="width: 100%; padding: 6px; background: #4444ff; border: none; border-radius: 4px; cursor: pointer; margin-top: 4px; font-size: 10px; color: white;">
+          <button id="export-data-btn" style="width: 100%; padding: 6px; 
+            background: #4444ff; border: none; border-radius: 4px; 
+            cursor: pointer; margin-top: 4px; font-size: 10px; color: white;">
             Export Data
           </button>
           </div>
@@ -70,10 +82,14 @@ class ExperimentUI {
           <p style="margin: 0 0 8px 0; font-size: 10px;">
             All 9 sessions completed.
           </p>
-          <button id="export-final-data-btn" style="width: 100%; padding: 4px; background: #00ff00; border: none; border-radius: 2px; cursor: pointer; font-size: 10px;">
+          <button id="export-final-data-btn" style="width: 100%; padding: 4px; 
+            background: #00ff00; border: none; border-radius: 2px; 
+            cursor: pointer; font-size: 10px;">
             Export Data
           </button>
-          <button id="reset-experiment-btn" style="width: 100%; padding: 4px; background: #ff4444; border: none; border-radius: 2px; cursor: pointer; margin-top: 3px; font-size: 10px;">
+          <button id="reset-experiment-btn" style="width: 100%; padding: 4px; 
+            background: #ff4444; border: none; border-radius: 2px; 
+            cursor: pointer; margin-top: 3px; font-size: 10px;">
             Reset
           </button>
         </div>
@@ -92,10 +108,13 @@ class ExperimentUI {
 
   createDebugPanel() {
     return `
-      <div id="debug-panel" style="margin-top: 15px; border-top: 1px solid #333; padding-top: 10px;">
+      <div id="debug-panel" style="margin-top: 15px; border-top: 1px solid #333;
+        padding-top: 10px;">
         <h4 style="margin: 0 0 5px 0; color: #ffaa00;">Debug Info</h4>
         <div id="debug-info" style="font-size: 10px; color: #ccc;"></div>
-        <button id="toggle-debug" style="padding: 3px 6px; background: #333; border: none; border-radius: 2px; cursor: pointer; font-size: 10px; margin-top: 5px;">Toggle Details</button>
+        <button id="toggle-debug" style="padding: 3px 6px; background: #333; 
+          border: none; border-radius: 2px; cursor: pointer; font-size: 10px; 
+          margin-top: 5px;">Toggle Details</button>
       </div>
     `;
   }
@@ -126,7 +145,9 @@ class ExperimentUI {
     }
 
     if (minimizeBtn) {
-      minimizeBtn.addEventListener('click', () => this.toggleMetricsMinimized());
+      minimizeBtn.addEventListener('click', () => {
+        this.toggleMetricsMinimized();
+      });
     }
 
     if (this.DEBUG) {
@@ -140,6 +161,7 @@ class ExperimentUI {
 
     // Listen for experiment events to show/hide the interface
     window.addEventListener('experimentSessionStarted', () => {
+      // eslint-disable-next-line no-console
       console.log('[ExperimentUI] Session started event received');
       this.showSessionInterface();
     });
@@ -156,11 +178,12 @@ class ExperimentUI {
 
   handleEndSession() {
     try {
+      // eslint-disable-next-line no-console
       console.log('[ExperimentUI] End session button clicked');
-      
+
       // Stop ALL metrics display intervals immediately
       this.stopMetricsDisplay();
-      
+
       // Clear any other possible intervals
       if (this.metricsUpdateInterval) {
         clearInterval(this.metricsUpdateInterval);
@@ -168,17 +191,20 @@ class ExperimentUI {
       }
 
       // Completely remove the experiment interface from DOM
-      const experimentInterface = document.getElementById('experiment-interface');
+      const experimentInterface = document
+        .getElementById('experiment-interface');
       if (experimentInterface) {
+        // eslint-disable-next-line no-console
         console.log('[ExperimentUI] Removing experiment interface from DOM');
         experimentInterface.remove();
       }
 
       // Stop the game engine properly
       if (window.gameCoordinator && window.gameCoordinator.gameEngine) {
+        // eslint-disable-next-line no-console
         console.log('[ExperimentUI] Stopping game engine');
         window.gameCoordinator.gameEngine.stop();
-        
+
         // Also pause the game using the pause mechanism
         if (window.gameCoordinator.gameEngine.running) {
           window.gameCoordinator.gameEngine.changePausedState(true);
@@ -189,35 +215,41 @@ class ExperimentUI {
       if (window.gameCoordinator) {
         // Stop Pacman movement
         if (window.gameCoordinator.pacman) {
+          // eslint-disable-next-line no-console
           console.log('[ExperimentUI] Stopping Pacman movement');
           window.gameCoordinator.pacman.moving = false;
         }
-        
+
         // Pause all ghosts
         if (window.gameCoordinator.ghosts) {
+          // eslint-disable-next-line no-console
           console.log('[ExperimentUI] Pausing ghosts');
-          window.gameCoordinator.ghosts.forEach(ghost => {
+          window.gameCoordinator.ghosts.forEach((ghost) => {
             if (ghost && typeof ghost.pause === 'function') {
               ghost.pause(true);
             }
           });
         }
-        
+
         // End session and show transition
-        console.log('[ExperimentUI] Ending experiment session and showing transition');
-        window.gameCoordinator.endExperimentSessionWithReason('user_terminated');
-        
-        // Show session transition after a brief delay to ensure everything is stopped
+        // eslint-disable-next-line no-console
+        console.log('[ExperimentUI] Ending experiment session and '
+          + 'showing transition');
+        window.gameCoordinator
+          .endExperimentSessionWithReason('user_terminated');
+
+        // Show session transition after a brief delay
         setTimeout(() => {
           window.gameCoordinator.showSessionTransition();
         }, 100);
       }
-      
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error ending session:', error);
-      
+
       // Fallback: try to at least show the session transition
-      if (window.gameCoordinator && typeof window.gameCoordinator.showSessionTransition === 'function') {
+      if (window.gameCoordinator
+        && typeof window.gameCoordinator.showSessionTransition === 'function') {
         window.gameCoordinator.showSessionTransition();
       }
     }
@@ -225,18 +257,36 @@ class ExperimentUI {
 
   handleExportData() {
     try {
-      const jsonData = this.experimentManager.exportData('json');
-      const csvData = this.experimentManager.exportData('csv');
+      // Use the new CSV export functionality from experimentManager
+      const success = this.experimentManager.exportUserCSV();
 
-      this.downloadFile(`experiment_${this.experimentManager.userId}_data.json`, jsonData);
-      this.downloadFile(`experiment_${this.experimentManager.userId}_data.csv`, csvData);
+      if (success) {
+        // eslint-disable-next-line no-console
+        console.log('[ExperimentUI] CSV export completed');
+      } else {
+        // eslint-disable-next-line no-console
+        console.warn('[ExperimentUI] CSV export failed, trying fallback');
+        // Fallback to old method
+        const jsonData = this.experimentManager.exportData('json');
+        const csvData = this.experimentManager.exportData('csv');
+        this.downloadFile(
+          `experiment_${this.experimentManager.userId}_data.json`,
+          jsonData,
+        );
+        this.downloadFile(
+          `experiment_${this.experimentManager.userId}_data.csv`,
+          csvData,
+        );
+      }
     } catch (error) {
+      // eslint-disable-next-line no-console
       console.error('Error exporting data:', error);
     }
   }
 
   handleResetExperiment() {
-    const confirmMessage = 'Are you sure you want to reset the experiment? All data will be lost.';
+    const confirmMessage = 'Are you sure you want to reset the experiment? '
+      + 'All data will be lost.';
     // eslint-disable-next-line no-alert
     if (window.confirm(confirmMessage)) {
       if (this.experimentManager.userId) {
@@ -254,11 +304,11 @@ class ExperimentUI {
 
     const metricsContent = document.getElementById('metrics-content');
     const minimizeBtn = document.getElementById('minimize-metrics-btn');
-    
+
     if (!metricsContent || !minimizeBtn) return;
 
     const isMinimized = metricsContent.style.display === 'none';
-    
+
     if (isMinimized) {
       // Expand
       metricsContent.style.display = 'block';
@@ -306,7 +356,7 @@ class ExperimentUI {
     if (sessionDiv) {
       sessionDiv.style.display = 'block';
     }
-    
+
     // Update all the session information and start metrics display
     this.updateSessionDisplay();
     this.startMetricsDisplay();
@@ -339,6 +389,7 @@ class ExperimentUI {
 
     const sessionInfo = this.experimentManager.getCurrentSessionInfo();
     if (!sessionInfo) {
+      // eslint-disable-next-line no-console
       console.warn('[ExperimentUI] No session info available');
       return;
     }
@@ -364,7 +415,8 @@ class ExperimentUI {
 
     if (progressInfoDiv) {
       progressInfoDiv.innerHTML = `
-        <strong>Progress:</strong> ${sessionInfo.completedSessions}/${sessionInfo.totalSessions} completed
+        <strong>Progress:</strong> ${sessionInfo.completedSessions}/`
+        + `${sessionInfo.totalSessions} completed
       `;
     }
 
@@ -386,12 +438,16 @@ class ExperimentUI {
   }
 
   stopMetricsDisplay() {
-    console.log('[ExperimentUI] stopMetricsDisplay called, interval ID:', this.metricsUpdateInterval);
+    // eslint-disable-next-line no-console
+    console.log('[ExperimentUI] stopMetricsDisplay called, interval ID:',
+      this.metricsUpdateInterval);
     if (this.metricsUpdateInterval) {
       clearInterval(this.metricsUpdateInterval);
       this.metricsUpdateInterval = null;
+      // eslint-disable-next-line no-console
       console.log('[ExperimentUI] Metrics interval cleared');
     } else {
+      // eslint-disable-next-line no-console
       console.log('[ExperimentUI] No metrics interval to clear');
     }
   }
@@ -399,30 +455,34 @@ class ExperimentUI {
   updateMetricsDisplay() {
     if (this.isTestEnvironment) return;
 
+    // eslint-disable-next-line no-console
     console.log('[ExperimentUI] updateMetricsDisplay called');
-    
+
     const metricsDiv = document.getElementById('metrics-display');
     if (!metricsDiv) {
+      // eslint-disable-next-line no-console
       console.log('[ExperimentUI] No metrics div found');
       return;
     }
 
     const metrics = this.getGameCoordinatorMetrics();
     if (!metrics) {
-      console.log('[ExperimentUI] No metrics available, showing waiting message');
+      // eslint-disable-next-line no-console
+      console.log('[ExperimentUI] No metrics available, '
+        + 'showing waiting message');
       metricsDiv.innerHTML = '<em>Waiting for game data...</em>';
       return;
     }
 
-    const gameTime = this.experimentManager.gameStartTime ? 
-      Math.floor(this.experimentManager.getGameplayTime() / 1000) : 0;
-    
+    const gameTime = this.experimentManager.gameStartTime
+      ? Math.floor(this.experimentManager.getGameplayTime() / 1000) : 0;
+
     // Get detailed breakdown of eaten items
     const detailedStats = this.getDetailedEatenStats();
-    
+
     const sessionInfo = this.experimentManager.getCurrentSessionInfo();
     const sessionId = sessionInfo ? sessionInfo.sessionId : '?';
-    
+
     metricsDiv.innerHTML = `
       <strong>📊 Session ${sessionId} Metrics</strong><br>
       <strong>🍴 Eaten Items:</strong><br>
@@ -432,7 +492,8 @@ class ExperimentUI {
       &nbsp;&nbsp;👻 Ghosts: ${detailedStats.ghosts}<br>
       <strong>📈 Game Stats:</strong><br>
       &nbsp;&nbsp;💀 Deaths: ${metrics.summary.totalDeaths}<br>
-      &nbsp;&nbsp;🔄 Turns: ${metrics.summary.successfulTurns}/${metrics.summary.totalTurns}<br>
+      &nbsp;&nbsp;🔄 Turns: ${metrics.summary.successfulTurns}/`
+        + `${metrics.summary.totalTurns}<br>
       &nbsp;&nbsp;⏱️ Time: ${gameTime}s<br>
       &nbsp;&nbsp;📋 Events: ${metrics.events ? metrics.events.length : 0}
     `;
@@ -449,7 +510,7 @@ class ExperimentUI {
         };
       }
 
-      const events = this.experimentManager.currentMetrics.events;
+      const { events } = this.experimentManager.currentMetrics;
       if (!events) {
         return {
           pacdots: 0,
@@ -487,6 +548,9 @@ class ExperimentUI {
           case 'ghostEaten':
             stats.ghosts += 1;
             break;
+          default:
+            // Other event types not tracked in detailed stats
+            break;
         }
       });
 
@@ -507,7 +571,8 @@ class ExperimentUI {
 
   getGameCoordinatorMetrics() {
     try {
-      if (!this.isTestEnvironment && window.gameCoordinator && window.gameCoordinator.metricsCollector) {
+      if (!this.isTestEnvironment && window.gameCoordinator
+        && window.gameCoordinator.metricsCollector) {
         return window.gameCoordinator.metricsCollector.getCurrentMetrics();
       }
 
@@ -518,6 +583,7 @@ class ExperimentUI {
       return null;
     } catch (error) {
       if (this.DEBUG) {
+        // eslint-disable-next-line no-console
         console.warn('[ExperimentUI] Error getting metrics:', error);
       }
       return null;
@@ -570,13 +636,15 @@ class ExperimentUI {
     this.experimentManager.logEvent(type, data);
 
     if (this.DEBUG) {
+      // eslint-disable-next-line no-console
       console.log('[METRICS]', type, data);
     }
   }
 
   destroy() {
     if (!this.isTestEnvironment) {
-      const experimentInterface = document.getElementById('experiment-interface');
+      const experimentInterface = document
+        .getElementById('experiment-interface');
       if (experimentInterface) {
         experimentInterface.remove();
       }

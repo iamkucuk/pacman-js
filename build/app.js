@@ -3747,16 +3747,34 @@ class ExperimentManager {
     // Supabase integration
     this.supabaseManager = null;
     this.useSupabase = true; // Enable Supabase by default
+    this.supabaseInitializing = false;
+    this.supabaseInitialized = false;
     this.initializeSupabase();
   }
 
   async initializeSupabase() {
+    if (this.supabaseInitializing) {
+      console.log('[ExperimentManager] ⏳ Supabase already initializing, waiting...');
+      return;
+    }
+    
+    this.supabaseInitializing = true;
+    
     try {
+      console.log('[ExperimentManager] 🔍 Checking SupabaseDataManager availability...');
+      console.log('[ExperimentManager] typeof SupabaseDataManager:', typeof SupabaseDataManager);
+      
       if (typeof SupabaseDataManager !== 'undefined') {
+        console.log('[ExperimentManager] ✨ Creating SupabaseDataManager instance...');
         this.supabaseManager = new SupabaseDataManager();
+        
+        console.log('[ExperimentManager] 🚀 Initializing Supabase connection...');
         const initialized = await this.supabaseManager.initialize();
+        
         if (initialized) {
           console.log('[ExperimentManager] 🚀 Supabase integration enabled');
+          console.log('[ExperimentManager] Supabase URL:', this.supabaseManager.supabaseUrl);
+          this.supabaseInitialized = true;
         } else {
           console.warn('[ExperimentManager] Supabase init failed, using localStorage');
           this.useSupabase = false;
@@ -3767,8 +3785,26 @@ class ExperimentManager {
       }
     } catch (error) {
       console.error('[ExperimentManager] Supabase initialization error:', error);
+      console.error('[ExperimentManager] Error stack:', error.stack);
       this.useSupabase = false;
+    } finally {
+      this.supabaseInitializing = false;
     }
+  }
+
+  async waitForSupabaseInitialization() {
+    if (this.supabaseInitialized) return true;
+    if (!this.useSupabase) return false;
+    
+    // Wait up to 10 seconds for initialization
+    const timeout = 10000;
+    const startTime = Date.now();
+    
+    while (this.supabaseInitializing && (Date.now() - startTime) < timeout) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    return this.supabaseInitialized;
   }
 
   generatePermutations() {
@@ -3796,15 +3832,22 @@ class ExperimentManager {
 
     this.userId = userId.trim();
 
-    if (this.useSupabase && this.supabaseManager) {
+    // Wait for Supabase initialization if it's enabled
+    console.log('[ExperimentManager] 🔄 Waiting for Supabase initialization...');
+    await this.waitForSupabaseInitialization();
+
+    if (this.useSupabase && this.supabaseManager && this.supabaseInitialized) {
       try {
+        console.log('[ExperimentManager] 🗃️ Loading user data from Supabase...');
         await this.loadUserDataFromSupabase();
       } catch (error) {
         console.error('[ExperimentManager] Supabase user init failed:', error);
         // Fallback to localStorage
+        console.log('[ExperimentManager] 📂 Falling back to localStorage...');
         this.loadUserData();
       }
     } else {
+      console.log('[ExperimentManager] 📂 Using localStorage for user data...');
       this.loadUserData();
     }
 
@@ -4017,10 +4060,18 @@ class ExperimentManager {
       // Log to Supabase
       if (this.useSupabase && this.supabaseManager) {
         try {
-          await this.supabaseManager.logEvent(event);
+          console.log('[ExperimentManager] 📝 Logging event to Supabase:', type, data);
+          const success = await this.supabaseManager.logEvent(event);
+          if (success) {
+            console.log('[ExperimentManager] ✅ Event logged to Supabase successfully');
+          } else {
+            console.warn('[ExperimentManager] ⚠️ Event logging to Supabase returned false');
+          }
         } catch (error) {
-          console.error('[ExperimentManager] Failed to log event to Supabase:', error);
+          console.error('[ExperimentManager] ❌ Failed to log event to Supabase:', error);
         }
+      } else {
+        console.log('[ExperimentManager] 📋 Skipping Supabase event log - useSupabase:', this.useSupabase, 'supabaseManager:', !!this.supabaseManager);
       }
 
       return true;
@@ -4958,6 +5009,9 @@ class ExperimentUI {
       sessionDiv.style.display = 'block';
     }
 
+    // Reset metrics for new session
+    this.resetMetricsDisplay();
+    
     // Update all the session information and start metrics display
     this.updateSessionDisplay();
     this.startMetricsDisplay();
@@ -5053,6 +5107,31 @@ class ExperimentUI {
     }
   }
 
+  resetMetricsDisplay() {
+    if (this.isTestEnvironment) return;
+
+    // eslint-disable-next-line no-console
+    console.log('[ExperimentUI] Resetting metrics display for new session');
+    
+    const metricsDiv = document.getElementById('metrics-display');
+    if (metricsDiv) {
+      // Reset to initial state showing zeros
+      metricsDiv.innerHTML = `
+        <strong>📊 New Session Starting...</strong><br>
+        <strong>🍴 Eaten Items:</strong><br>
+        &nbsp;&nbsp;🔸 Pacdots: 0<br>
+        &nbsp;&nbsp;⚡ Power Pellets: 0<br>
+        &nbsp;&nbsp;🍎 Fruits: 0<br>
+        &nbsp;&nbsp;👻 Ghosts: 0<br>
+        <strong>📈 Game Stats:</strong><br>
+        &nbsp;&nbsp;💀 Deaths: 0<br>
+        &nbsp;&nbsp;🔄 Turns: 0/0<br>
+        &nbsp;&nbsp;⏱️ Time: 0s<br>
+        &nbsp;&nbsp;📋 Events: 0
+      `;
+    }
+  }
+
   updateMetricsDisplay() {
     if (this.isTestEnvironment) return;
 
@@ -5122,9 +5201,14 @@ class ExperimentUI {
       }
 
       // Debug: Log session info to verify reset behavior
-      if (this.DEBUG && events.length === 0) {
-        // eslint-disable-next-line no-console
-        console.log('[ExperimentUI] New session detected - events reset');
+      if (this.DEBUG) {
+        if (events.length === 0) {
+          // eslint-disable-next-line no-console
+          console.log('[ExperimentUI] New session detected - events reset');
+        } else {
+          // eslint-disable-next-line no-console
+          console.log(`[ExperimentUI] Processing ${events.length} events for detailed stats`);
+        }
       }
 
       const stats = {
@@ -5137,14 +5221,15 @@ class ExperimentUI {
       events.forEach((event) => {
         // Check event type for pellets and ghosts
         switch (event.type) {
-          case 'pacdot':
-            stats.pacdots += 1;
-            break;
-          case 'powerPellet':
-            stats.powerPellets += 1;
-            break;
-          case 'fruit':
-            stats.fruits += 1;
+          case 'pelletEaten':
+            // Check the specific pellet type in data.type
+            if (event.data && event.data.type === 'pacdot') {
+              stats.pacdots += 1;
+            } else if (event.data && event.data.type === 'powerPellet') {
+              stats.powerPellets += 1;
+            } else if (event.data && event.data.type === 'fruit') {
+              stats.fruits += 1;
+            }
             break;
           case 'ghostEaten':
             stats.ghosts += 1;

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supabase Diagnostic Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 4px; }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background-color: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb; }
+        .warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeaa7; }
+        button { margin: 5px; padding: 10px 15px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        #output { margin-top: 20px; font-family: monospace; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>Supabase Integration Diagnostic</h1>
+    
+    <div>
+        <button onclick="runDiagnostic()">Run Full Diagnostic</button>
+        <button onclick="clearOutput()">Clear Output</button>
+    </div>
+
+    <div id="output"></div>
+
+    <script src="build/app.js"></script>
+    <script>
+        function log(message, type = 'info') {
+            const output = document.getElementById('output');
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            output.appendChild(div);
+            console.log(message);
+        }
+
+        function clearOutput() {
+            document.getElementById('output').innerHTML = '';
+        }
+
+        async function runDiagnostic() {
+            clearOutput();
+            log('🔍 Starting Supabase Integration Diagnostic', 'info');
+            
+            // Step 1: Check if classes are available
+            log('Step 1: Checking class availability', 'info');
+            log(`- ExperimentManager: ${typeof ExperimentManager}`, 'info');
+            log(`- SupabaseDataManager: ${typeof SupabaseDataManager}`, 'info');
+            
+            if (typeof SupabaseDataManager === 'undefined') {
+                log('❌ SupabaseDataManager not found in build!', 'error');
+                return;
+            }
+            
+            // Step 2: Create ExperimentManager and watch initialization
+            log('Step 2: Creating ExperimentManager...', 'info');
+            const manager = new ExperimentManager();
+            
+            // Wait for async initialization
+            log('Step 3: Waiting for Supabase initialization...', 'info');
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            
+            // Step 4: Check manager state
+            log('Step 4: Checking manager state', 'info');
+            log(`- useSupabase: ${manager.useSupabase}`, manager.useSupabase ? 'success' : 'warning');
+            log(`- supabaseManager exists: ${!!manager.supabaseManager}`, manager.supabaseManager ? 'success' : 'error');
+            
+            if (manager.supabaseManager) {
+                log(`- supabaseManager.isInitialized: ${manager.supabaseManager.isInitialized}`, manager.supabaseManager.isInitialized ? 'success' : 'error');
+                log(`- supabaseManager.supabaseUrl: ${manager.supabaseManager.supabaseUrl}`, 'info');
+            }
+            
+            // Step 5: Test connection if possible
+            if (manager.useSupabase && manager.supabaseManager) {
+                log('Step 5: Testing connection...', 'info');
+                try {
+                    const connected = await manager.testSupabaseConnection();
+                    log(`- Connection test result: ${connected}`, connected ? 'success' : 'error');
+                } catch (error) {
+                    log(`- Connection test error: ${error.message}`, 'error');
+                }
+            } else {
+                log('Step 5: Skipping connection test (Supabase not available)', 'warning');
+            }
+            
+            // Step 6: Check window.supabase
+            log('Step 6: Checking Supabase client', 'info');
+            log(`- window.supabase exists: ${typeof window.supabase !== 'undefined'}`, typeof window.supabase !== 'undefined' ? 'success' : 'warning');
+            
+            if (typeof window.supabase !== 'undefined') {
+                log(`- window.supabase.createClient: ${typeof window.supabase.createClient}`, 'info');
+            }
+            
+            log('🏁 Diagnostic complete', 'info');
+        }
+
+        // Auto-run diagnostic on page load
+        window.addEventListener('load', () => {
+            log('Page loaded, starting diagnostic in 2 seconds...', 'info');
+            setTimeout(runDiagnostic, 2000);
+        });
+    </script>
+</body>
+</html>

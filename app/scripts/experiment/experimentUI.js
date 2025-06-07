@@ -357,6 +357,9 @@ class ExperimentUI {
       sessionDiv.style.display = 'block';
     }
 
+    // Reset metrics for new session
+    this.resetMetricsDisplay();
+    
     // Update all the session information and start metrics display
     this.updateSessionDisplay();
     this.startMetricsDisplay();
@@ -452,6 +455,31 @@ class ExperimentUI {
     }
   }
 
+  resetMetricsDisplay() {
+    if (this.isTestEnvironment) return;
+
+    // eslint-disable-next-line no-console
+    console.log('[ExperimentUI] Resetting metrics display for new session');
+    
+    const metricsDiv = document.getElementById('metrics-display');
+    if (metricsDiv) {
+      // Reset to initial state showing zeros
+      metricsDiv.innerHTML = `
+        <strong>📊 New Session Starting...</strong><br>
+        <strong>🍴 Eaten Items:</strong><br>
+        &nbsp;&nbsp;🔸 Pacdots: 0<br>
+        &nbsp;&nbsp;⚡ Power Pellets: 0<br>
+        &nbsp;&nbsp;🍎 Fruits: 0<br>
+        &nbsp;&nbsp;👻 Ghosts: 0<br>
+        <strong>📈 Game Stats:</strong><br>
+        &nbsp;&nbsp;💀 Deaths: 0<br>
+        &nbsp;&nbsp;🔄 Turns: 0/0<br>
+        &nbsp;&nbsp;⏱️ Time: 0s<br>
+        &nbsp;&nbsp;📋 Events: 0
+      `;
+    }
+  }
+
   updateMetricsDisplay() {
     if (this.isTestEnvironment) return;
 
@@ -521,9 +549,14 @@ class ExperimentUI {
       }
 
       // Debug: Log session info to verify reset behavior
-      if (this.DEBUG && events.length === 0) {
-        // eslint-disable-next-line no-console
-        console.log('[ExperimentUI] New session detected - events reset');
+      if (this.DEBUG) {
+        if (events.length === 0) {
+          // eslint-disable-next-line no-console
+          console.log('[ExperimentUI] New session detected - events reset');
+        } else {
+          // eslint-disable-next-line no-console
+          console.log(`[ExperimentUI] Processing ${events.length} events for detailed stats`);
+        }
       }
 
       const stats = {
@@ -536,14 +569,15 @@ class ExperimentUI {
       events.forEach((event) => {
         // Check event type for pellets and ghosts
         switch (event.type) {
-          case 'pacdot':
-            stats.pacdots += 1;
-            break;
-          case 'powerPellet':
-            stats.powerPellets += 1;
-            break;
-          case 'fruit':
-            stats.fruits += 1;
+          case 'pelletEaten':
+            // Check the specific pellet type in data.type
+            if (event.data && event.data.type === 'pacdot') {
+              stats.pacdots += 1;
+            } else if (event.data && event.data.type === 'powerPellet') {
+              stats.powerPellets += 1;
+            } else if (event.data && event.data.type === 'fruit') {
+              stats.fruits += 1;
+            }
             break;
           case 'ghostEaten':
             stats.ghosts += 1;

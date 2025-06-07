@@ -25,16 +25,34 @@ class ExperimentManager {
     // Supabase integration
     this.supabaseManager = null;
     this.useSupabase = true; // Enable Supabase by default
+    this.supabaseInitializing = false;
+    this.supabaseInitialized = false;
     this.initializeSupabase();
   }
 
   async initializeSupabase() {
+    if (this.supabaseInitializing) {
+      console.log('[ExperimentManager] ⏳ Supabase already initializing, waiting...');
+      return;
+    }
+    
+    this.supabaseInitializing = true;
+    
     try {
+      console.log('[ExperimentManager] 🔍 Checking SupabaseDataManager availability...');
+      console.log('[ExperimentManager] typeof SupabaseDataManager:', typeof SupabaseDataManager);
+      
       if (typeof SupabaseDataManager !== 'undefined') {
+        console.log('[ExperimentManager] ✨ Creating SupabaseDataManager instance...');
         this.supabaseManager = new SupabaseDataManager();
+        
+        console.log('[ExperimentManager] 🚀 Initializing Supabase connection...');
         const initialized = await this.supabaseManager.initialize();
+        
         if (initialized) {
           console.log('[ExperimentManager] 🚀 Supabase integration enabled');
+          console.log('[ExperimentManager] Supabase URL:', this.supabaseManager.supabaseUrl);
+          this.supabaseInitialized = true;
         } else {
           console.warn('[ExperimentManager] Supabase init failed, using localStorage');
           this.useSupabase = false;
@@ -45,8 +63,26 @@ class ExperimentManager {
       }
     } catch (error) {
       console.error('[ExperimentManager] Supabase initialization error:', error);
+      console.error('[ExperimentManager] Error stack:', error.stack);
       this.useSupabase = false;
+    } finally {
+      this.supabaseInitializing = false;
     }
+  }
+
+  async waitForSupabaseInitialization() {
+    if (this.supabaseInitialized) return true;
+    if (!this.useSupabase) return false;
+    
+    // Wait up to 10 seconds for initialization
+    const timeout = 10000;
+    const startTime = Date.now();
+    
+    while (this.supabaseInitializing && (Date.now() - startTime) < timeout) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    return this.supabaseInitialized;
   }
 
   generatePermutations() {
@@ -74,15 +110,22 @@ class ExperimentManager {
 
     this.userId = userId.trim();
 
-    if (this.useSupabase && this.supabaseManager) {
+    // Wait for Supabase initialization if it's enabled
+    console.log('[ExperimentManager] 🔄 Waiting for Supabase initialization...');
+    await this.waitForSupabaseInitialization();
+
+    if (this.useSupabase && this.supabaseManager && this.supabaseInitialized) {
       try {
+        console.log('[ExperimentManager] 🗃️ Loading user data from Supabase...');
         await this.loadUserDataFromSupabase();
       } catch (error) {
         console.error('[ExperimentManager] Supabase user init failed:', error);
         // Fallback to localStorage
+        console.log('[ExperimentManager] 📂 Falling back to localStorage...');
         this.loadUserData();
       }
     } else {
+      console.log('[ExperimentManager] 📂 Using localStorage for user data...');
       this.loadUserData();
     }
 
@@ -295,10 +338,18 @@ class ExperimentManager {
       // Log to Supabase
       if (this.useSupabase && this.supabaseManager) {
         try {
-          await this.supabaseManager.logEvent(event);
+          console.log('[ExperimentManager] 📝 Logging event to Supabase:', type, data);
+          const success = await this.supabaseManager.logEvent(event);
+          if (success) {
+            console.log('[ExperimentManager] ✅ Event logged to Supabase successfully');
+          } else {
+            console.warn('[ExperimentManager] ⚠️ Event logging to Supabase returned false');
+          }
         } catch (error) {
-          console.error('[ExperimentManager] Failed to log event to Supabase:', error);
+          console.error('[ExperimentManager] ❌ Failed to log event to Supabase:', error);
         }
+      } else {
+        console.log('[ExperimentManager] 📋 Skipping Supabase event log - useSupabase:', this.useSupabase, 'supabaseManager:', !!this.supabaseManager);
       }
 
       return true;

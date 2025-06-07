@@ -174,7 +174,6 @@ class SupabaseDataManager {
         .insert([
           {
             session_id: sessionId,
-            user_id: userId,
           },
         ])
         .select()

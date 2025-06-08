@@ -2500,8 +2500,8 @@ class GameCoordinator {
   gameOver() {
     localStorage.setItem('highScore', this.highScore);
 
-    // End current experiment session
-    this.endExperimentSession();
+    // End current game (not session) - the experiment manager will handle this
+    this.endCurrentGame('game_over');
 
     new Timer(() => {
       this.displayText(
@@ -2521,7 +2521,8 @@ class GameCoordinator {
         this.rightCover.style.right = '0';
 
         setTimeout(() => {
-          this.showSessionTransition();
+          // In multi-game sessions, restart the game instead of showing session transition
+          this.restartGameInSession();
         }, 1000);
       }, 2500);
     }, 2250);
@@ -2529,9 +2530,10 @@ class GameCoordinator {
 
   /**
    * Ends the current experiment session and handles session completion
+   * (Only called when "End Session" button is pressed in multi-game sessions)
    */
   endExperimentSession() {
-    this.endExperimentSessionWithReason('game_over');
+    this.endExperimentSessionWithReason('manual_end');
   }
 
   /**
@@ -2962,21 +2964,22 @@ class GameCoordinator {
   levelCompleteEndSession() {
     localStorage.setItem('highScore', this.highScore);
 
-    // End current experiment session with level complete reason
-    this.endExperimentSessionWithReason('level_complete');
+    // End current game (not session) with level complete reason
+    this.endCurrentGame('level_complete');
 
     this.leftCover.style.left = '0';
     this.rightCover.style.right = '0';
 
     setTimeout(() => {
-      this.showSessionTransition();
+      // In multi-game sessions, restart the game instead of showing session transition
+      this.restartGameInSession();
     }, 1000);
   }
 
   /**
-   * Ends the current experiment session with a specific reason
+   * End current game and dispatch game ended event for multi-game sessions
    */
-  endExperimentSessionWithReason(reason) {
+  endCurrentGame(reason) {
     if (this.experimentManager.isExperimentActive) {
       // Dispatch game ended event with reason
       window.dispatchEvent(new CustomEvent('gameEnded', {
@@ -2988,6 +2991,40 @@ class GameCoordinator {
           timestamp: Date.now(),
         },
       }));
+    }
+  }
+
+  /**
+   * Restart the game within the current session (for multi-game sessions)
+   */
+  restartGameInSession() {
+    // Reset game state but keep session active
+    this.reset();
+    this.startGameplay(true);
+
+    // Show the game again
+    this.leftCover.style.left = '-50%';
+    this.rightCover.style.right = '-50%';
+
+    // Dispatch game started event for the new game
+    window.dispatchEvent(new CustomEvent('gameStarted', {
+      detail: {
+        sessionId: (this.experimentManager.currentSession && this.experimentManager.currentSession.sessionId) ? this.experimentManager.currentSession.sessionId : null,
+        speedConfig: (this.experimentManager.currentSession && this.experimentManager.currentSession.speedConfig) ? this.experimentManager.currentSession.speedConfig : null,
+        timestamp: Date.now(),
+      },
+    }));
+  }
+
+  /**
+   * Ends the current experiment session (called when "End Session" button pressed)
+   */
+  endExperimentSessionWithReason(reason) {
+    if (this.experimentManager.isExperimentActive) {
+      // End current game if active
+      if (this.experimentManager.currentSession && this.experimentManager.currentSession.currentGame) {
+        this.endCurrentGame(reason);
+      }
 
       // End the session in experiment manager with final score
       this.experimentManager.endSession(this.points);
@@ -3000,6 +3037,9 @@ class GameCoordinator {
           reason,
         },
       }));
+
+      // Show session transition UI only when session actually ends
+      this.showSessionTransition();
     }
   }
 

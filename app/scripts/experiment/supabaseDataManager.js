@@ -737,6 +737,154 @@ class SupabaseDataManager {
       return { success: false, message: error.message };
     }
   }
+
+  /**
+   * Save individual game data to the games table
+   */
+  async saveGameData(gameData, sessionId) {
+    if (!this.isInitialized) {
+      console.warn('[SupabaseDataManager] Not initialized, cannot save game data');
+      return false;
+    }
+
+    try {
+      const gameRecord = {
+        session_id: sessionId,
+        game_id: gameData.gameId,
+        start_time: new Date(gameData.startTime).toISOString(),
+        end_time: gameData.endTime ? new Date(gameData.endTime).toISOString() : null,
+        game_time: gameData.gameTime,
+        final_score: gameData.finalScore,
+        end_reason: gameData.endReason,
+        // Store individual game statistics
+        ghosts_eaten: gameData.stats.ghostsEaten,
+        pellets_eaten: gameData.stats.pelletsEaten,
+        deaths: gameData.stats.deaths,
+        successful_turns: gameData.stats.successfulTurns,
+        total_turns: gameData.stats.totalTurns,
+        created_at: new Date().toISOString(),
+      };
+
+      console.log('[SupabaseDataManager] 💾 Saving game data to database:', gameRecord);
+      
+      const { data, error } = await this.supabase
+        .from('games')
+        .insert([gameRecord])
+        .select();
+
+      if (error) {
+        console.error('[SupabaseDataManager] ❌ Error saving game data:', error);
+        return false;
+      }
+
+      console.log('[SupabaseDataManager] ✅ Game data saved successfully:', data);
+      return true;
+    } catch (error) {
+      console.error('[SupabaseDataManager] ❌ Exception saving game data:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Update session summary with aggregated game statistics
+   */
+  async updateSessionAggregatedSummary(sessionId, aggregatedStats, totalGamesPlayed) {
+    if (!this.isInitialized) {
+      console.warn('[SupabaseDataManager] Not initialized, cannot update session summary');
+      return false;
+    }
+
+    try {
+      const summaryRecord = {
+        // Aggregated statistics
+        total_games_played: totalGamesPlayed,
+        // Ghosts eaten stats
+        ghosts_eaten_mean: aggregatedStats.ghostsEaten.mean,
+        ghosts_eaten_std: aggregatedStats.ghostsEaten.std,
+        ghosts_eaten_max: aggregatedStats.ghostsEaten.max,
+        ghosts_eaten_min: aggregatedStats.ghostsEaten.min,
+        // Pellets eaten stats
+        pellets_eaten_mean: aggregatedStats.pelletsEaten.mean,
+        pellets_eaten_std: aggregatedStats.pelletsEaten.std,
+        pellets_eaten_max: aggregatedStats.pelletsEaten.max,
+        pellets_eaten_min: aggregatedStats.pelletsEaten.min,
+        // Deaths stats
+        deaths_mean: aggregatedStats.deaths.mean,
+        deaths_std: aggregatedStats.deaths.std,
+        deaths_max: aggregatedStats.deaths.max,
+        deaths_min: aggregatedStats.deaths.min,
+        // Successful turns stats
+        successful_turns_mean: aggregatedStats.successfulTurns.mean,
+        successful_turns_std: aggregatedStats.successfulTurns.std,
+        successful_turns_max: aggregatedStats.successfulTurns.max,
+        successful_turns_min: aggregatedStats.successfulTurns.min,
+        // Total turns stats
+        total_turns_mean: aggregatedStats.totalTurns.mean,
+        total_turns_std: aggregatedStats.totalTurns.std,
+        total_turns_max: aggregatedStats.totalTurns.max,
+        total_turns_min: aggregatedStats.totalTurns.min,
+        // Game time stats
+        game_time_mean: aggregatedStats.gameTime.mean,
+        game_time_std: aggregatedStats.gameTime.std,
+        game_time_max: aggregatedStats.gameTime.max,
+        game_time_min: aggregatedStats.gameTime.min,
+        // Final score stats
+        final_score_mean: aggregatedStats.finalScore.mean,
+        final_score_std: aggregatedStats.finalScore.std,
+        final_score_max: aggregatedStats.finalScore.max,
+        final_score_min: aggregatedStats.finalScore.min,
+        updated_at: new Date().toISOString(),
+      };
+
+      console.log('[SupabaseDataManager] 📊 Updating session aggregated summary:', summaryRecord);
+      
+      const { data, error } = await this.supabase
+        .from('session_summaries')
+        .update(summaryRecord)
+        .eq('session_id', sessionId)
+        .select();
+
+      if (error) {
+        console.error('[SupabaseDataManager] ❌ Error updating session summary:', error);
+        return false;
+      }
+
+      console.log('[SupabaseDataManager] ✅ Session aggregated summary updated successfully');
+      return true;
+    } catch (error) {
+      console.error('[SupabaseDataManager] ❌ Exception updating session summary:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get all games for a session
+   */
+  async getSessionGames(sessionId) {
+    if (!this.isInitialized) {
+      console.warn('[SupabaseDataManager] Not initialized, cannot get session games');
+      return [];
+    }
+
+    try {
+      const { data, error } = await this.supabase
+        .from('games')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('game_id', { ascending: true });
+
+      if (error) {
+        console.error('[SupabaseDataManager] ❌ Error getting session games:', error);
+        return [];
+      }
+
+      console.log('[SupabaseDataManager] ✅ Retrieved session games:', data.length);
+      return data;
+    } catch (error) {
+      console.error('[SupabaseDataManager] ❌ Exception getting session games:', error);
+      return [];
+    }
+  }
 }
 
 // Export for both browser and Node.js environments

@@ -540,25 +540,47 @@ class ExperimentUI {
     const sessionInfo = this.experimentManager.getCurrentSessionInfo();
     const sessionId = sessionInfo ? sessionInfo.sessionId : '?';
 
+    // Get current game stats and session aggregated stats
+    const currentGameStats = this.experimentManager.getCurrentGameStats() || {
+      ghostsEaten: 0, pelletsEaten: 0, deaths: 0, successfulTurns: 0, totalTurns: 0
+    };
+    const currentGameId = this.experimentManager.currentSession?.currentGame?.gameId || 1;
+    const totalGames = this.experimentManager.currentSession?.games?.length || 0;
+    const aggregatedStats = this.experimentManager.currentSession?.summary?.aggregatedStats;
+
     // Debug logging for live metrics display
     console.log('[ExperimentUI] Live metrics debug:');
     console.log('- sessionInfo from getCurrentSessionInfo:', sessionInfo);
     console.log('- sessionId being displayed:', sessionId);
+    console.log('- currentGameStats:', currentGameStats);
+    console.log('- currentGameId:', currentGameId);
+    console.log('- totalGames completed:', totalGames);
 
-    metricsDiv.innerHTML = `
-      <strong>📊 Session ${sessionId} Metrics</strong><br>
-      <strong>🍴 Eaten Items:</strong><br>
+    let htmlContent = `
+      <strong>📊 Session ${sessionId} - Game ${currentGameId}</strong><br>
+      <strong>🎮 Current Game:</strong><br>
       &nbsp;&nbsp;🔸 Pacdots: ${detailedStats.pacdots}<br>
       &nbsp;&nbsp;⚡ Power Pellets: ${detailedStats.powerPellets}<br>
       &nbsp;&nbsp;🍎 Fruits: ${detailedStats.fruits}<br>
-      &nbsp;&nbsp;👻 Ghosts: ${detailedStats.ghosts}<br>
-      <strong>📈 Game Stats:</strong><br>
-      &nbsp;&nbsp;💀 Deaths: ${metrics.summary.totalDeaths}<br>
-      &nbsp;&nbsp;🔄 Turns: ${metrics.summary.successfulTurns}/`
-        + `${metrics.summary.totalTurns}<br>
+      &nbsp;&nbsp;👻 Ghosts: ${currentGameStats.ghostsEaten}<br>
+      &nbsp;&nbsp;💀 Deaths: ${currentGameStats.deaths}<br>
+      &nbsp;&nbsp;🔄 Turns: ${currentGameStats.successfulTurns}/${currentGameStats.totalTurns}<br>
       &nbsp;&nbsp;⏱️ Time: ${gameTime}s<br>
-      &nbsp;&nbsp;📋 Events: ${metrics.events ? metrics.events.length : 0}
     `;
+
+    // Add aggregated session stats if there are completed games
+    if (totalGames > 0 && aggregatedStats) {
+      htmlContent += `
+        <br><strong>📈 Session Stats (${totalGames} games):</strong><br>
+        &nbsp;&nbsp;👻 Ghosts: µ=${aggregatedStats.ghostsEaten.mean.toFixed(1)}, σ=${aggregatedStats.ghostsEaten.std.toFixed(1)}<br>
+        &nbsp;&nbsp;🍴 Pellets: µ=${aggregatedStats.pelletsEaten.mean.toFixed(1)}, σ=${aggregatedStats.pelletsEaten.std.toFixed(1)}<br>
+        &nbsp;&nbsp;💀 Deaths: µ=${aggregatedStats.deaths.mean.toFixed(1)}, σ=${aggregatedStats.deaths.std.toFixed(1)}<br>
+        &nbsp;&nbsp;⭐ Scores: µ=${aggregatedStats.finalScore.mean.toFixed(0)}, σ=${aggregatedStats.finalScore.std.toFixed(0)}<br>
+      `;
+    }
+
+    htmlContent += `&nbsp;&nbsp;📋 Events: ${metrics.events ? metrics.events.length : 0}`;
+    metricsDiv.innerHTML = htmlContent;
   }
 
   getDetailedEatenStats() {

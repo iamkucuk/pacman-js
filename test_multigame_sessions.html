@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Game Session Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin-bottom: 30px; padding: 15px; border: 1px solid #ccc; }
+        .button { padding: 10px 20px; margin: 5px; cursor: pointer; }
+        .results { background-color: #f5f5f5; padding: 10px; margin-top: 10px; }
+        .stats-display { background-color: #e8f4fd; padding: 15px; margin: 10px 0; border-radius: 5px; }
+        .game-item { background-color: #fff; border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 3px; }
+        .aggregated-stats { background-color: #f0f8ff; padding: 10px; border-left: 3px solid #007acc; }
+    </style>
+</head>
+<body>
+    <h1>🎮 Multi-Game Session Test</h1>
+    <p>This page tests the new multi-game session functionality where a session can contain multiple games with aggregated statistics.</p>
+
+    <div class="test-section">
+        <h2>📊 Session Management</h2>
+        <button class="button" onclick="initializeTest()">Initialize Test Session</button>
+        <button class="button" onclick="startNewGame()">Start New Game</button>
+        <button class="button" onclick="simulateGameplay()">Simulate Gameplay</button>
+        <button class="button" onclick="endCurrentGame()">End Current Game</button>
+        <button class="button" onclick="endSession()">End Session</button>
+        <div id="session-results" class="results"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>📈 Live Statistics Display</h2>
+        <div id="live-stats" class="stats-display">
+            <em>No session active...</em>
+        </div>
+        <button class="button" onclick="updateDisplay()">Refresh Display</button>
+    </div>
+
+    <div class="test-section">
+        <h2>🎯 Game History</h2>
+        <div id="game-history" class="results">
+            <em>No games played yet...</em>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>🗄️ Database Integration</h2>
+        <button class="button" onclick="checkSupabaseConnection()">Check Supabase Connection</button>
+        <button class="button" onclick="viewSupabaseData()">View Database Data</button>
+        <div id="database-results" class="results"></div>
+    </div>
+
+    <script src="build/app.js"></script>
+    <script>
+        let experimentManager;
+        let currentGameSimulation = null;
+
+        async function initializeTest() {
+            const results = document.getElementById('session-results');
+            
+            try {
+                // Initialize experiment manager
+                experimentManager = new ExperimentManager();
+                
+                // Set a test user ID
+                const testUserId = 'test-user-' + Date.now();
+                await experimentManager.setUserId(testUserId);
+                
+                // Start a test session
+                const session = await experimentManager.startSession();
+                
+                results.innerHTML = `
+                    <h3>✅ Test Session Initialized</h3>
+                    <p><strong>User ID:</strong> ${testUserId}</p>
+                    <p><strong>Session ID:</strong> ${session.sessionId}</p>
+                    <p><strong>Speed Config:</strong> Pacman: ${session.speedConfig.pacman}, Ghost: ${session.speedConfig.ghost}</p>
+                    <p><strong>Session Structure:</strong></p>
+                    <ul>
+                        <li>Games Array: ${session.games.length} games</li>
+                        <li>Current Game: ${session.currentGame ? 'In Progress' : 'None'}</li>
+                        <li>Aggregated Stats Keys: ${Object.keys(session.summary.aggregatedStats).join(', ')}</li>
+                    </ul>
+                `;
+                
+                updateDisplay();
+            } catch (error) {
+                results.innerHTML = `<h3>❌ Initialization Failed</h3><p>${error.message}</p>`;
+                console.error('Test initialization failed:', error);
+            }
+        }
+
+        function startNewGame() {
+            const results = document.getElementById('session-results');
+            
+            if (!experimentManager) {
+                results.innerHTML = '<p>❌ Please initialize test session first</p>';
+                return;
+            }
+
+            try {
+                const game = experimentManager.startNewGame();
+                results.innerHTML = `
+                    <h3>🎮 New Game Started</h3>
+                    <p><strong>Game ID:</strong> ${game.gameId}</p>
+                    <p><strong>Start Time:</strong> ${new Date(game.startTime).toLocaleTimeString()}</p>
+                    <p><strong>Initial Stats:</strong> All zeros</p>
+                `;
+                updateDisplay();
+            } catch (error) {
+                results.innerHTML = `<h3>❌ Failed to Start Game</h3><p>${error.message}</p>`;
+            }
+        }
+
+        function simulateGameplay() {
+            const results = document.getElementById('session-results');
+            
+            if (!experimentManager || !experimentManager.currentSession?.currentGame) {
+                results.innerHTML = '<p>❌ No active game to simulate</p>';
+                return;
+            }
+
+            // Simulate random gameplay events
+            const events = [
+                { type: 'pelletEaten', data: { type: 'pacdot' } },
+                { type: 'pelletEaten', data: { type: 'powerPellet' } },
+                { type: 'ghostEaten', data: { ghostId: 'blinky' } },
+                { type: 'death', data: { cause: 'ghost_collision' } },
+                { type: 'turnComplete', data: { success: true } },
+                { type: 'turnComplete', data: { success: false } }
+            ];
+
+            // Simulate 10-20 random events
+            const numEvents = 10 + Math.floor(Math.random() * 10);
+            let eventsSimulated = [];
+            
+            for (let i = 0; i < numEvents; i++) {
+                const event = events[Math.floor(Math.random() * events.length)];
+                experimentManager.logEvent(event.type, event.data);
+                eventsSimulated.push(event.type);
+            }
+
+            results.innerHTML = `
+                <h3>🎯 Gameplay Simulated</h3>
+                <p><strong>Events Generated:</strong> ${numEvents}</p>
+                <p><strong>Event Types:</strong> ${[...new Set(eventsSimulated)].join(', ')}</p>
+                <p><strong>Current Game Stats:</strong></p>
+                <ul>
+                    <li>Ghosts Eaten: ${experimentManager.getCurrentGameStats()?.ghostsEaten || 0}</li>
+                    <li>Pellets Eaten: ${experimentManager.getCurrentGameStats()?.pelletsEaten || 0}</li>
+                    <li>Deaths: ${experimentManager.getCurrentGameStats()?.deaths || 0}</li>
+                    <li>Successful Turns: ${experimentManager.getCurrentGameStats()?.successfulTurns || 0}</li>
+                    <li>Total Turns: ${experimentManager.getCurrentGameStats()?.totalTurns || 0}</li>
+                </ul>
+            `;
+            updateDisplay();
+        }
+
+        function endCurrentGame() {
+            const results = document.getElementById('session-results');
+            
+            if (!experimentManager || !experimentManager.currentSession?.currentGame) {
+                results.innerHTML = '<p>❌ No active game to end</p>';
+                return;
+            }
+
+            try {
+                const finalScore = Math.floor(Math.random() * 10000) + 1000; // Random score
+                const reasons = ['game_over', 'level_complete'];
+                const reason = reasons[Math.floor(Math.random() * reasons.length)];
+                
+                const endedGame = experimentManager.endCurrentGame(reason, finalScore);
+                
+                results.innerHTML = `
+                    <h3>🏁 Game Ended</h3>
+                    <p><strong>Game ID:</strong> ${endedGame.gameId}</p>
+                    <p><strong>End Reason:</strong> ${endedGame.endReason}</p>
+                    <p><strong>Final Score:</strong> ${endedGame.finalScore}</p>
+                    <p><strong>Game Time:</strong> ${(endedGame.gameTime / 1000).toFixed(1)}s</p>
+                    <p><strong>Final Stats:</strong></p>
+                    <ul>
+                        <li>Ghosts Eaten: ${endedGame.stats.ghostsEaten}</li>
+                        <li>Pellets Eaten: ${endedGame.stats.pelletsEaten}</li>
+                        <li>Deaths: ${endedGame.stats.deaths}</li>
+                        <li>Successful Turns: ${endedGame.stats.successfulTurns}/${endedGame.stats.totalTurns}</li>
+                    </ul>
+                `;
+                updateDisplay();
+                updateGameHistory();
+            } catch (error) {
+                results.innerHTML = `<h3>❌ Failed to End Game</h3><p>${error.message}</p>`;
+            }
+        }
+
+        function endSession() {
+            const results = document.getElementById('session-results');
+            
+            if (!experimentManager) {
+                results.innerHTML = '<p>❌ No session to end</p>';
+                return;
+            }
+
+            try {
+                // End current game if active
+                if (experimentManager.currentSession?.currentGame) {
+                    experimentManager.endCurrentGame('manual_end', Math.floor(Math.random() * 5000));
+                }
+
+                const sessionSummary = experimentManager.currentSession.summary;
+                
+                results.innerHTML = `
+                    <h3>🎉 Session Completed</h3>
+                    <p><strong>Total Games Played:</strong> ${sessionSummary.totalGamesPlayed}</p>
+                    <p><strong>Session Totals:</strong></p>
+                    <ul>
+                        <li>Total Ghosts Eaten: ${sessionSummary.totalGhostsEaten}</li>
+                        <li>Total Pellets Eaten: ${sessionSummary.totalPelletsEaten}</li>
+                        <li>Total Deaths: ${sessionSummary.totalDeaths}</li>
+                        <li>Total Game Time: ${(sessionSummary.gameTime / 1000).toFixed(1)}s</li>
+                    </ul>
+                    <p><strong>Aggregated Statistics Available:</strong> ✅</p>
+                `;
+                updateDisplay();
+                updateGameHistory();
+            } catch (error) {
+                results.innerHTML = `<h3>❌ Failed to End Session</h3><p>${error.message}</p>`;
+            }
+        }
+
+        function updateDisplay() {
+            const statsDiv = document.getElementById('live-stats');
+            
+            if (!experimentManager || !experimentManager.currentSession) {
+                statsDiv.innerHTML = '<em>No session active...</em>';
+                return;
+            }
+
+            const session = experimentManager.currentSession;
+            const currentGame = session.currentGame;
+            const aggregatedStats = session.summary.aggregatedStats;
+            const totalGames = session.games.length;
+
+            let html = `
+                <h3>📊 Session ${session.sessionId} Statistics</h3>
+                <div style="display: flex; gap: 20px;">
+                    <div style="flex: 1;">
+                        <h4>🎮 Current Game</h4>
+                        ${currentGame ? `
+                            <p><strong>Game ID:</strong> ${currentGame.gameId}</p>
+                            <p><strong>Stats:</strong></p>
+                            <ul>
+                                <li>Ghosts Eaten: ${currentGame.stats.ghostsEaten}</li>
+                                <li>Pellets Eaten: ${currentGame.stats.pelletsEaten}</li>
+                                <li>Deaths: ${currentGame.stats.deaths}</li>
+                                <li>Turns: ${currentGame.stats.successfulTurns}/${currentGame.stats.totalTurns}</li>
+                            </ul>
+                        ` : '<p><em>No active game</em></p>'}
+                    </div>
+                    <div style="flex: 1;" class="aggregated-stats">
+                        <h4>📈 Aggregated Stats (${totalGames} games)</h4>
+                        ${totalGames > 0 ? `
+                            <p><strong>Ghosts Eaten:</strong> μ=${aggregatedStats.ghostsEaten.mean.toFixed(2)}, σ=${aggregatedStats.ghostsEaten.std.toFixed(2)}</p>
+                            <p><strong>Pellets Eaten:</strong> μ=${aggregatedStats.pelletsEaten.mean.toFixed(2)}, σ=${aggregatedStats.pelletsEaten.std.toFixed(2)}</p>
+                            <p><strong>Deaths:</strong> μ=${aggregatedStats.deaths.mean.toFixed(2)}, σ=${aggregatedStats.deaths.std.toFixed(2)}</p>
+                            <p><strong>Final Scores:</strong> μ=${aggregatedStats.finalScore.mean.toFixed(0)}, σ=${aggregatedStats.finalScore.std.toFixed(0)}</p>
+                        ` : '<p><em>No completed games yet</em></p>'}
+                    </div>
+                </div>
+            `;
+
+            statsDiv.innerHTML = html;
+        }
+
+        function updateGameHistory() {
+            const historyDiv = document.getElementById('game-history');
+            
+            if (!experimentManager || !experimentManager.currentSession?.games?.length) {
+                historyDiv.innerHTML = '<em>No games played yet...</em>';
+                return;
+            }
+
+            const games = experimentManager.currentSession.games;
+            let html = '<h3>🎯 Game History</h3>';
+            
+            games.forEach(game => {
+                html += `
+                    <div class="game-item">
+                        <strong>Game ${game.gameId}</strong> - ${game.endReason} - Score: ${game.finalScore}
+                        <br>Stats: ${game.stats.ghostsEaten}👻, ${game.stats.pelletsEaten}🍴, ${game.stats.deaths}💀, ${game.stats.successfulTurns}/${game.stats.totalTurns}🔄
+                        <br>Time: ${(game.gameTime / 1000).toFixed(1)}s
+                    </div>
+                `;
+            });
+
+            historyDiv.innerHTML = html;
+        }
+
+        async function checkSupabaseConnection() {
+            const results = document.getElementById('database-results');
+            
+            if (!experimentManager) {
+                results.innerHTML = '<p>❌ No experiment manager available</p>';
+                return;
+            }
+
+            try {
+                const connectionStatus = experimentManager.supabaseManager ? 
+                    experimentManager.supabaseManager.isInitialized : false;
+                
+                results.innerHTML = `
+                    <h3>🗄️ Supabase Connection Status</h3>
+                    <p><strong>Connected:</strong> ${connectionStatus ? '✅ Yes' : '❌ No'}</p>
+                    <p><strong>Manager Available:</strong> ${experimentManager.supabaseManager ? '✅ Yes' : '❌ No'}</p>
+                    <p><strong>Use Supabase:</strong> ${experimentManager.useSupabase ? '✅ Yes' : '❌ No'}</p>
+                `;
+            } catch (error) {
+                results.innerHTML = `<h3>❌ Connection Check Failed</h3><p>${error.message}</p>`;
+            }
+        }
+
+        async function viewSupabaseData() {
+            const results = document.getElementById('database-results');
+            
+            if (!experimentManager || !experimentManager.supabaseManager?.isInitialized) {
+                results.innerHTML = '<p>❌ Supabase not available</p>';
+                return;
+            }
+
+            try {
+                // This would require additional methods to query the database
+                results.innerHTML = `
+                    <h3>🗄️ Database Data</h3>
+                    <p><em>Database query functionality would be implemented here</em></p>
+                    <p>Tables that should contain data:</p>
+                    <ul>
+                        <li><strong>games</strong> - Individual game records</li>
+                        <li><strong>sessions</strong> - Session metadata</li>
+                        <li><strong>session_summaries</strong> - Aggregated statistics</li>
+                        <li><strong>events</strong> - Detailed event logs</li>
+                    </ul>
+                `;
+            } catch (error) {
+                results.innerHTML = `<h3>❌ Database Query Failed</h3><p>${error.message}</p>`;
+            }
+        }
+
+        // Auto-refresh display every 2 seconds
+        setInterval(() => {
+            if (experimentManager && experimentManager.currentSession) {
+                updateDisplay();
+            }
+        }, 2000);
+    </script>
+</body>
+</html>

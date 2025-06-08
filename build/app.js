@@ -3957,6 +3957,9 @@ class ExperimentManager {
     // Database migration detection - clear localStorage if database changed
     this.checkDatabaseMigration();
     this.initializeSupabase();
+
+    // Set up game event listeners for multi-game sessions
+    this.setupGameEventListeners();
   }
 
   checkDatabaseMigration() {
@@ -4218,7 +4221,21 @@ class ExperimentManager {
       speedConfig: config,
       timestamp: new Date(),
       events: [],
+      games: [], // Array to store individual game statistics
+      currentGame: null, // Current game being played
       summary: {
+        // Session-level aggregated statistics
+        totalGamesPlayed: 0,
+        aggregatedStats: {
+          ghostsEaten: { mean: 0, std: 0, max: 0, min: 0, values: [] },
+          pelletsEaten: { mean: 0, std: 0, max: 0, min: 0, values: [] },
+          deaths: { mean: 0, std: 0, max: 0, min: 0, values: [] },
+          successfulTurns: { mean: 0, std: 0, max: 0, min: 0, values: [] },
+          totalTurns: { mean: 0, std: 0, max: 0, min: 0, values: [] },
+          gameTime: { mean: 0, std: 0, max: 0, min: 0, values: [] },
+          finalScore: { mean: 0, std: 0, max: 0, min: 0, values: [] }
+        },
+        // Legacy totals for backward compatibility
         totalGhostsEaten: 0,
         totalPelletsEaten: 0,
         totalDeaths: 0,
@@ -4427,20 +4444,26 @@ class ExperimentManager {
 
     const { summary } = this.currentMetrics;
 
+    // Update session-level legacy totals
     switch (type) {
       case 'ghostEaten':
         summary.totalGhostsEaten++;
+        this.updateCurrentGameStats('ghostsEaten');
         break;
       case 'pelletEaten':
         summary.totalPelletsEaten++;
+        this.updateCurrentGameStats('pelletsEaten');
         break;
       case 'death':
         summary.totalDeaths++;
+        this.updateCurrentGameStats('deaths');
         break;
       case 'turnComplete':
         summary.totalTurns++;
+        this.updateCurrentGameStats('totalTurns');
         if (data.success) {
           summary.successfulTurns++;
+          this.updateCurrentGameStats('successfulTurns');
         }
         break;
     }
@@ -5068,6 +5091,263 @@ class ExperimentManager {
     }
   }
 
+  /**
+   * Start a new game within the current session
+   */
+  startNewGame() {
+    if (!this.currentSession) {
+      console.error('[ExperimentManager] Cannot start game - no active session');
+      return null;
+    }
+
+    // Finalize previous game if it exists
+    if (this.currentSession.currentGame) {
+      this.finalizeCurrentGame();
+    }
+
+    // Create new game instance
+    this.currentSession.currentGame = {
+      gameId: this.currentSession.games.length + 1,
+      startTime: Date.now(),
+      endTime: null,
+      gameTime: 0,
+      finalScore: 0,
+      stats: {
+        ghostsEaten: 0,
+        pelletsEaten: 0,
+        deaths: 0,
+        successfulTurns: 0,
+        totalTurns: 0,
+      },
+      events: [],
+      endReason: null, // 'game_over', 'level_complete', or 'manual_end'
+    };
+
+    console.log('[ExperimentManager] 🎮 Started new game:', this.currentSession.currentGame.gameId);
+    return this.currentSession.currentGame;
+  }
+
+  /**
+   * End the current game with reason (game_over, level_complete, manual_end)
+   */
+  endCurrentGame(reason = 'manual_end', finalScore = 0) {
+    if (!this.currentSession || !this.currentSession.currentGame) {
+      console.warn('[ExperimentManager] No active game to end');
+      return null;
+    }
+
+    const game = this.currentSession.currentGame;
+    game.endTime = Date.now();
+    game.gameTime = game.endTime - game.startTime;
+    game.finalScore = finalScore;
+    game.endReason = reason;
+
+    // Move to completed games
+    this.currentSession.games.push({ ...game });
+    this.currentSession.currentGame = null;
+
+    // Update session statistics
+    this.updateSessionAggregatedStats();
+
+    console.log('[ExperimentManager] 🏁 Game ended:', game.gameId, 'Reason:', reason, 'Score:', finalScore);
+    
+    // Save game data to Supabase
+    this.saveGameDataToSupabase(game);
+    
+    // Save session data
+    this.saveCurrentSession();
+
+    return game;
+  }
+
+  /**
+   * Finalize current game without ending it (for cleanup)
+   */
+  finalizeCurrentGame() {
+    if (!this.currentSession || !this.currentSession.currentGame) {
+      return;
+    }
+
+    const game = this.currentSession.currentGame;
+    game.endTime = Date.now();
+    game.gameTime = game.endTime - game.startTime;
+    game.endReason = 'finalized';
+
+    // Move to completed games
+    this.currentSession.games.push({ ...game });
+    this.currentSession.currentGame = null;
+
+    console.log('[ExperimentManager] 📋 Game finalized:', game.gameId);
+  }
+
+  /**
+   * Update aggregated statistics for the session
+   */
+  updateSessionAggregatedStats() {
+    if (!this.currentSession || !this.currentSession.games.length) {
+      return;
+    }
+
+    const games = this.currentSession.games;
+    const stats = this.currentSession.summary.aggregatedStats;
+
+    // Update each metric
+    Object.keys(stats).forEach(metric => {
+      let values;
+      
+      if (metric === 'finalScore') {
+        values = games.map(game => game.finalScore || 0);
+      } else {
+        values = games.map(game => game.stats[metric] || 0);
+      }
+
+      stats[metric].values = values;
+      stats[metric].mean = this.calculateMean(values);
+      stats[metric].std = this.calculateStandardDeviation(values);
+      stats[metric].max = Math.max(...values);
+      stats[metric].min = Math.min(...values);
+    });
+
+    // Update session totals
+    this.currentSession.summary.totalGamesPlayed = games.length;
+    this.currentSession.summary.totalGhostsEaten = games.reduce((sum, game) => sum + (game.stats.ghostsEaten || 0), 0);
+    this.currentSession.summary.totalPelletsEaten = games.reduce((sum, game) => sum + (game.stats.pelletsEaten || 0), 0);
+    this.currentSession.summary.totalDeaths = games.reduce((sum, game) => sum + (game.stats.deaths || 0), 0);
+    this.currentSession.summary.successfulTurns = games.reduce((sum, game) => sum + (game.stats.successfulTurns || 0), 0);
+    this.currentSession.summary.totalTurns = games.reduce((sum, game) => sum + (game.stats.totalTurns || 0), 0);
+    this.currentSession.summary.gameTime = games.reduce((sum, game) => sum + (game.gameTime || 0), 0);
+
+    console.log('[ExperimentManager] 📊 Updated session aggregated stats');
+    
+    // Update Supabase with aggregated stats
+    this.saveAggregatedStatsToSupabase();
+  }
+
+  /**
+   * Save individual game data to Supabase
+   */
+  async saveGameDataToSupabase(gameData) {
+    if (!this.useSupabase || !this.supabaseManager || !this.currentSession) {
+      return;
+    }
+
+    try {
+      // Get the current session ID from Supabase
+      const sessionData = await this.supabaseManager.getSessionData(
+        this.currentSession.userId,
+        this.currentSession.sessionId
+      );
+      
+      if (sessionData && sessionData.length > 0) {
+        const supabaseSessionId = sessionData[0].id;
+        await this.supabaseManager.saveGameData(gameData, supabaseSessionId);
+        console.log('[ExperimentManager] ✅ Game data saved to Supabase');
+      } else {
+        console.warn('[ExperimentManager] ⚠️ Could not find session in Supabase for game data');
+      }
+    } catch (error) {
+      console.error('[ExperimentManager] ❌ Failed to save game data to Supabase:', error);
+    }
+  }
+
+  /**
+   * Save aggregated session statistics to Supabase
+   */
+  async saveAggregatedStatsToSupabase() {
+    if (!this.useSupabase || !this.supabaseManager || !this.currentSession) {
+      return;
+    }
+
+    try {
+      // Get the current session ID from Supabase
+      const sessionData = await this.supabaseManager.getSessionData(
+        this.currentSession.userId,
+        this.currentSession.sessionId
+      );
+      
+      if (sessionData && sessionData.length > 0) {
+        const supabaseSessionId = sessionData[0].id;
+        await this.supabaseManager.updateSessionAggregatedSummary(
+          supabaseSessionId,
+          this.currentSession.summary.aggregatedStats,
+          this.currentSession.summary.totalGamesPlayed
+        );
+        console.log('[ExperimentManager] ✅ Aggregated stats saved to Supabase');
+      } else {
+        console.warn('[ExperimentManager] ⚠️ Could not find session in Supabase for aggregated stats');
+      }
+    } catch (error) {
+      console.error('[ExperimentManager] ❌ Failed to save aggregated stats to Supabase:', error);
+    }
+  }
+
+  /**
+   * Calculate mean of an array of numbers
+   */
+  calculateMean(values) {
+    if (!values || !values.length) return 0;
+    return values.reduce((sum, val) => sum + val, 0) / values.length;
+  }
+
+  /**
+   * Calculate standard deviation of an array of numbers
+   */
+  calculateStandardDeviation(values) {
+    if (!values || values.length < 2) return 0;
+    
+    const mean = this.calculateMean(values);
+    const squaredDiffs = values.map(value => Math.pow(value - mean, 2));
+    const avgSquaredDiff = this.calculateMean(squaredDiffs);
+    
+    return Math.sqrt(avgSquaredDiff);
+  }
+
+  /**
+   * Set up event listeners for game start/end events
+   */
+  setupGameEventListeners() {
+    // Listen for game start events
+    window.addEventListener('gameStarted', (event) => {
+      console.log('[ExperimentManager] 🎮 Game started event received');
+      this.startNewGame();
+    });
+
+    // Listen for game end events 
+    window.addEventListener('gameEnded', (event) => {
+      const { reason, finalScore } = event.detail || {};
+      console.log('[ExperimentManager] 🏁 Game ended event received:', reason, 'Score:', finalScore);
+      this.endCurrentGame(reason, finalScore);
+    });
+  }
+
+  /**
+   * Get current game statistics
+   */
+  getCurrentGameStats() {
+    if (!this.currentSession || !this.currentSession.currentGame) {
+      return null;
+    }
+    return this.currentSession.currentGame.stats;
+  }
+
+  /**
+   * Update current game statistics (called by metrics collector)
+   */
+  updateCurrentGameStats(statName, increment = 1) {
+    if (!this.currentSession || !this.currentSession.currentGame) {
+      console.warn('[ExperimentManager] Cannot update game stats - no active game');
+      return;
+    }
+
+    const stats = this.currentSession.currentGame.stats;
+    if (stats.hasOwnProperty(statName)) {
+      stats[statName] += increment;
+      console.log('[ExperimentManager] 📈 Updated game stat:', statName, '=', stats[statName]);
+    } else {
+      console.warn('[ExperimentManager] Unknown stat name:', statName);
+    }
+  }
+
   getDebugInfo() {
     return {
       userId: this.userId,
@@ -5625,25 +5905,47 @@ class ExperimentUI {
     const sessionInfo = this.experimentManager.getCurrentSessionInfo();
     const sessionId = sessionInfo ? sessionInfo.sessionId : '?';
 
+    // Get current game stats and session aggregated stats
+    const currentGameStats = this.experimentManager.getCurrentGameStats() || {
+      ghostsEaten: 0, pelletsEaten: 0, deaths: 0, successfulTurns: 0, totalTurns: 0
+    };
+    const currentGameId = this.experimentManager.currentSession?.currentGame?.gameId || 1;
+    const totalGames = this.experimentManager.currentSession?.games?.length || 0;
+    const aggregatedStats = this.experimentManager.currentSession?.summary?.aggregatedStats;
+
     // Debug logging for live metrics display
     console.log('[ExperimentUI] Live metrics debug:');
     console.log('- sessionInfo from getCurrentSessionInfo:', sessionInfo);
     console.log('- sessionId being displayed:', sessionId);
+    console.log('- currentGameStats:', currentGameStats);
+    console.log('- currentGameId:', currentGameId);
+    console.log('- totalGames completed:', totalGames);
 
-    metricsDiv.innerHTML = `
-      <strong>📊 Session ${sessionId} Metrics</strong><br>
-      <strong>🍴 Eaten Items:</strong><br>
+    let htmlContent = `
+      <strong>📊 Session ${sessionId} - Game ${currentGameId}</strong><br>
+      <strong>🎮 Current Game:</strong><br>
       &nbsp;&nbsp;🔸 Pacdots: ${detailedStats.pacdots}<br>
       &nbsp;&nbsp;⚡ Power Pellets: ${detailedStats.powerPellets}<br>
       &nbsp;&nbsp;🍎 Fruits: ${detailedStats.fruits}<br>
-      &nbsp;&nbsp;👻 Ghosts: ${detailedStats.ghosts}<br>
-      <strong>📈 Game Stats:</strong><br>
-      &nbsp;&nbsp;💀 Deaths: ${metrics.summary.totalDeaths}<br>
-      &nbsp;&nbsp;🔄 Turns: ${metrics.summary.successfulTurns}/`
-        + `${metrics.summary.totalTurns}<br>
+      &nbsp;&nbsp;👻 Ghosts: ${currentGameStats.ghostsEaten}<br>
+      &nbsp;&nbsp;💀 Deaths: ${currentGameStats.deaths}<br>
+      &nbsp;&nbsp;🔄 Turns: ${currentGameStats.successfulTurns}/${currentGameStats.totalTurns}<br>
       &nbsp;&nbsp;⏱️ Time: ${gameTime}s<br>
-      &nbsp;&nbsp;📋 Events: ${metrics.events ? metrics.events.length : 0}
     `;
+
+    // Add aggregated session stats if there are completed games
+    if (totalGames > 0 && aggregatedStats) {
+      htmlContent += `
+        <br><strong>📈 Session Stats (${totalGames} games):</strong><br>
+        &nbsp;&nbsp;👻 Ghosts: µ=${aggregatedStats.ghostsEaten.mean.toFixed(1)}, σ=${aggregatedStats.ghostsEaten.std.toFixed(1)}<br>
+        &nbsp;&nbsp;🍴 Pellets: µ=${aggregatedStats.pelletsEaten.mean.toFixed(1)}, σ=${aggregatedStats.pelletsEaten.std.toFixed(1)}<br>
+        &nbsp;&nbsp;💀 Deaths: µ=${aggregatedStats.deaths.mean.toFixed(1)}, σ=${aggregatedStats.deaths.std.toFixed(1)}<br>
+        &nbsp;&nbsp;⭐ Scores: µ=${aggregatedStats.finalScore.mean.toFixed(0)}, σ=${aggregatedStats.finalScore.std.toFixed(0)}<br>
+      `;
+    }
+
+    htmlContent += `&nbsp;&nbsp;📋 Events: ${metrics.events ? metrics.events.length : 0}`;
+    metricsDiv.innerHTML = htmlContent;
   }
 
   getDetailedEatenStats() {
@@ -9066,6 +9368,154 @@ class SupabaseDataManager {
     } catch (error) {
       console.error('[SupabaseDataManager] ❌ Error deleting last session:', error);
       return { success: false, message: error.message };
+    }
+  }
+
+  /**
+   * Save individual game data to the games table
+   */
+  async saveGameData(gameData, sessionId) {
+    if (!this.isInitialized) {
+      console.warn('[SupabaseDataManager] Not initialized, cannot save game data');
+      return false;
+    }
+
+    try {
+      const gameRecord = {
+        session_id: sessionId,
+        game_id: gameData.gameId,
+        start_time: new Date(gameData.startTime).toISOString(),
+        end_time: gameData.endTime ? new Date(gameData.endTime).toISOString() : null,
+        game_time: gameData.gameTime,
+        final_score: gameData.finalScore,
+        end_reason: gameData.endReason,
+        // Store individual game statistics
+        ghosts_eaten: gameData.stats.ghostsEaten,
+        pellets_eaten: gameData.stats.pelletsEaten,
+        deaths: gameData.stats.deaths,
+        successful_turns: gameData.stats.successfulTurns,
+        total_turns: gameData.stats.totalTurns,
+        created_at: new Date().toISOString(),
+      };
+
+      console.log('[SupabaseDataManager] 💾 Saving game data to database:', gameRecord);
+      
+      const { data, error } = await this.supabase
+        .from('games')
+        .insert([gameRecord])
+        .select();
+
+      if (error) {
+        console.error('[SupabaseDataManager] ❌ Error saving game data:', error);
+        return false;
+      }
+
+      console.log('[SupabaseDataManager] ✅ Game data saved successfully:', data);
+      return true;
+    } catch (error) {
+      console.error('[SupabaseDataManager] ❌ Exception saving game data:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Update session summary with aggregated game statistics
+   */
+  async updateSessionAggregatedSummary(sessionId, aggregatedStats, totalGamesPlayed) {
+    if (!this.isInitialized) {
+      console.warn('[SupabaseDataManager] Not initialized, cannot update session summary');
+      return false;
+    }
+
+    try {
+      const summaryRecord = {
+        // Aggregated statistics
+        total_games_played: totalGamesPlayed,
+        // Ghosts eaten stats
+        ghosts_eaten_mean: aggregatedStats.ghostsEaten.mean,
+        ghosts_eaten_std: aggregatedStats.ghostsEaten.std,
+        ghosts_eaten_max: aggregatedStats.ghostsEaten.max,
+        ghosts_eaten_min: aggregatedStats.ghostsEaten.min,
+        // Pellets eaten stats
+        pellets_eaten_mean: aggregatedStats.pelletsEaten.mean,
+        pellets_eaten_std: aggregatedStats.pelletsEaten.std,
+        pellets_eaten_max: aggregatedStats.pelletsEaten.max,
+        pellets_eaten_min: aggregatedStats.pelletsEaten.min,
+        // Deaths stats
+        deaths_mean: aggregatedStats.deaths.mean,
+        deaths_std: aggregatedStats.deaths.std,
+        deaths_max: aggregatedStats.deaths.max,
+        deaths_min: aggregatedStats.deaths.min,
+        // Successful turns stats
+        successful_turns_mean: aggregatedStats.successfulTurns.mean,
+        successful_turns_std: aggregatedStats.successfulTurns.std,
+        successful_turns_max: aggregatedStats.successfulTurns.max,
+        successful_turns_min: aggregatedStats.successfulTurns.min,
+        // Total turns stats
+        total_turns_mean: aggregatedStats.totalTurns.mean,
+        total_turns_std: aggregatedStats.totalTurns.std,
+        total_turns_max: aggregatedStats.totalTurns.max,
+        total_turns_min: aggregatedStats.totalTurns.min,
+        // Game time stats
+        game_time_mean: aggregatedStats.gameTime.mean,
+        game_time_std: aggregatedStats.gameTime.std,
+        game_time_max: aggregatedStats.gameTime.max,
+        game_time_min: aggregatedStats.gameTime.min,
+        // Final score stats
+        final_score_mean: aggregatedStats.finalScore.mean,
+        final_score_std: aggregatedStats.finalScore.std,
+        final_score_max: aggregatedStats.finalScore.max,
+        final_score_min: aggregatedStats.finalScore.min,
+        updated_at: new Date().toISOString(),
+      };
+
+      console.log('[SupabaseDataManager] 📊 Updating session aggregated summary:', summaryRecord);
+      
+      const { data, error } = await this.supabase
+        .from('session_summaries')
+        .update(summaryRecord)
+        .eq('session_id', sessionId)
+        .select();
+
+      if (error) {
+        console.error('[SupabaseDataManager] ❌ Error updating session summary:', error);
+        return false;
+      }
+
+      console.log('[SupabaseDataManager] ✅ Session aggregated summary updated successfully');
+      return true;
+    } catch (error) {
+      console.error('[SupabaseDataManager] ❌ Exception updating session summary:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get all games for a session
+   */
+  async getSessionGames(sessionId) {
+    if (!this.isInitialized) {
+      console.warn('[SupabaseDataManager] Not initialized, cannot get session games');
+      return [];
+    }
+
+    try {
+      const { data, error } = await this.supabase
+        .from('games')
+        .select('*')
+        .eq('session_id', sessionId)
+        .order('game_id', { ascending: true });
+
+      if (error) {
+        console.error('[SupabaseDataManager] ❌ Error getting session games:', error);
+        return [];
+      }
+
+      console.log('[SupabaseDataManager] ✅ Retrieved session games:', data.length);
+      return data;
+    } catch (error) {
+      console.error('[SupabaseDataManager] ❌ Exception getting session games:', error);
+      return [];
     }
   }
 }

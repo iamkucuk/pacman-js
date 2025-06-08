@@ -966,3 +966,59 @@ Fixed all optional chaining syntax (`?.`) errors throughout the JavaScript codeb
 - Verified no functional regressions in experiment system or data collection
 
 ---
+
+### [2025-01-06] - Implemented Multi-Game Sessions with Aggregated Statistics
+**Files Modified:** 
+- `app/scripts/experiment/experimentManager.js:289-320,520-541,1160-1430` - Added multi-game session support with statistical calculations
+- `app/scripts/experiment/experimentUI.js:540-583` - Enhanced UI to display current game and aggregated session statistics
+- `app/scripts/experiment/supabaseDataManager.js:740-887` - Added database methods for individual games and aggregated summaries
+- `build/app.js` - Compiled JavaScript with multi-game session functionality
+- `test_multigame_sessions.html` - Created comprehensive test interface for multi-game functionality
+
+**Type:** Feature
+
+**Severity:** High
+
+**Description:**
+Completely transformed the experiment system from single-game sessions to multi-game sessions with comprehensive statistical analysis. Sessions now support multiple games with detailed aggregated statistics instead of ending after one game completion.
+
+**Impact:**
+- **Enhanced Research Capabilities**: Sessions can contain unlimited games providing richer statistical data
+- **Aggregated Statistics**: Automatic calculation of mean, standard deviation, max, and min for all metrics across games
+- **Individual Game Tracking**: Each game's statistics preserved separately with final scores and end reasons
+- **Real-time Display**: Live UI shows both current game stats and session-wide aggregated statistics
+- **Database Integration**: New database schema supports individual games table and enhanced session summaries
+- **Session Control**: Sessions only end when "End Session" button is explicitly pressed by user
+- **Statistical Analysis**: Researchers get comprehensive data for performance analysis across multiple games
+
+**Technical Implementation:**
+- **Session Structure**: Added `games[]` array and `currentGame` object to track individual games
+- **Statistical Calculations**: Built-in mean, standard deviation, max, min calculations for all metrics
+- **Event Integration**: Automatic game start/end detection via existing game coordinator events
+- **Database Schema**: New `games` table stores individual game records with detailed statistics
+- **Backward Compatibility**: Legacy session totals maintained for existing integrations
+- **Live Statistics**: Enhanced UI displays μ (mean) and σ (standard deviation) symbols for aggregated stats
+
+**New Capabilities:**
+- Multiple games per speed configuration session
+- Game-by-game performance tracking
+- Session-wide statistical analysis
+- Individual game end reasons (game_over, level_complete, manual_end)
+- Real-time aggregated statistics display
+- Enhanced research data collection
+- Comprehensive game history within sessions
+
+**Related Issues:**
+- User request for sessions to contain multiple games rather than single game
+- Need for aggregated statistical analysis across games within same speed configuration
+- Requirement for sessions to only end on explicit user action
+- Research need for richer statistical data collection
+
+**Testing:**
+- Created comprehensive test interface in `test_multigame_sessions.html`
+- Verified game start/end cycle management within sessions
+- Confirmed statistical calculations for mean, std, max, min
+- Tested database integration for individual games and aggregated summaries
+- Validated UI display of real-time statistics and game history
+
+---

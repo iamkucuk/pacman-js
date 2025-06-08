@@ -1921,6 +1921,7 @@ class GameCoordinator {
       }
 
       // End the session in experiment manager with final score
+      this.experimentManager.blockSessionEnd = true; // Allow session end
       this.experimentManager.endSession(this.points);
 
       // Dispatch session ended event for other components

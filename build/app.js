@@ -3031,6 +3031,7 @@ class GameCoordinator {
       }
 
       // End the session in experiment manager with final score
+      this.experimentManager.blockSessionEnd = true; // Allow session end
       this.experimentManager.endSession(this.points);
 
       // Dispatch session ended event for other components
@@ -4561,6 +4562,15 @@ class ExperimentManager {
   async endSession(finalScore = 0) {
     console.log('[ExperimentManager] 🚨 OLD endSession() called - this should NOT happen in multi-game sessions!');
     console.trace('[ExperimentManager] Call stack for endSession:');
+    
+    // BLOCK session ending during individual games - only allow when explicitly requested
+    if (this.currentSession && this.currentSession.games && this.blockSessionEnd !== true) {
+      console.log('[ExperimentManager] 🚫 BLOCKING automatic session end - this is a multi-game session');
+      console.log('[ExperimentManager] 🎮 Current games:', this.currentSession.games.length);
+      console.log('[ExperimentManager] 🔴 To end session, use "End Session" button');
+      return; // Don't end session automatically
+    }
+    
     if (!this.isExperimentActive || !this.currentMetrics) return;
 
     // Ensure timer is properly stopped and calculate final time
@@ -5598,6 +5608,7 @@ class ExperimentUI {
 
         // Actually end the session with final score and wait for all async operations
         const finalScore = window.gameCoordinator.points || 0;
+        window.gameCoordinator.experimentManager.blockSessionEnd = true; // Allow session end
         await window.gameCoordinator.experimentManager.endSession(finalScore);
         // eslint-disable-next-line no-console
         console.log('[ExperimentUI] ✅ Session saved successfully');

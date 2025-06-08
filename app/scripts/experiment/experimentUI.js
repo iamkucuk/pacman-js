@@ -187,6 +187,7 @@ class ExperimentUI {
 
         // Actually end the session with final score and wait for all async operations
         const finalScore = window.gameCoordinator.points || 0;
+        window.gameCoordinator.experimentManager.blockSessionEnd = true; // Allow session end
         await window.gameCoordinator.experimentManager.endSession(finalScore);
         // eslint-disable-next-line no-console
         console.log('[ExperimentUI] ✅ Session saved successfully');

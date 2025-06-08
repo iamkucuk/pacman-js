@@ -261,20 +261,13 @@ class GameCoordinator {
 
   updateSessionDisplay(session) {
     const displayUserId = document.getElementById('display-user-id');
-    const displaySessionInfo = document.getElementById('display-session-info');
-    const displaySpeedConfig = document.getElementById('display-speed-config');
 
     if (displayUserId) {
       displayUserId.textContent = session.userId;
     }
 
-    if (displaySessionInfo) {
-      displaySessionInfo.textContent = `${session.sessionId}/9`;
-    }
-
-    if (displaySpeedConfig) {
-      displaySpeedConfig.textContent = `Pac-Man: ${session.speedConfig.pacman.toUpperCase()}, Ghosts: ${session.speedConfig.ghost.toUpperCase()}`;
-    }
+    // Session ID and speed config are now only shown in debug screen
+    // No need to populate main menu elements
   }
 
   showExperimentCompleteMessage() {

@@ -1,0 +1,23 @@
+services:
+  # Development version with volume mounts for faster iteration
+  pacman-research-dev:
+    build: 
+      context: .
+      dockerfile: Dockerfile.proxy
+    container_name: pacman-research-dev
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    volumes:
+      # Mount the build directory so changes are reflected immediately
+      - ./build:/usr/share/nginx/html/build:ro
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+      - ./app/style:/usr/share/nginx/html/app/style:ro
+      # Keep favicon and other static assets
+      - ./favicon.ico:/usr/share/nginx/html/favicon.ico:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

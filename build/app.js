@@ -4559,6 +4559,8 @@ class ExperimentManager {
   }
 
   async endSession(finalScore = 0) {
+    console.log('[ExperimentManager] 🚨 OLD endSession() called - this should NOT happen in multi-game sessions!');
+    console.trace('[ExperimentManager] Call stack for endSession:');
     if (!this.isExperimentActive || !this.currentMetrics) return;
 
     // Ensure timer is properly stopped and calculate final time

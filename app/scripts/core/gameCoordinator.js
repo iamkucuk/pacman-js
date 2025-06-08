@@ -575,8 +575,8 @@ class GameCoordinator {
     // Always dispatch experiment session started event when game starts
     window.dispatchEvent(new CustomEvent('experimentSessionStarted', {
       detail: {
-        sessionId: this.experimentManager.currentSession?.sessionId,
-        speedConfig: this.experimentManager.currentSession?.speedConfig,
+        sessionId: this.experimentManager.currentSession ? this.experimentManager.currentSession.sessionId : null,
+        speedConfig: this.experimentManager.currentSession ? this.experimentManager.currentSession.speedConfig : null,
         completedSessions: this.experimentManager.getCompletedSessionsCount() - 1
       }
     }));
@@ -606,8 +606,8 @@ class GameCoordinator {
     // Dispatch game started event for experiment tracking
     window.dispatchEvent(new CustomEvent('gameStarted', {
       detail: {
-        sessionId: this.experimentManager.currentSession?.sessionId,
-        speedConfig: this.experimentManager.currentSession?.speedConfig,
+        sessionId: (this.experimentManager.currentSession && this.experimentManager.currentSession.sessionId) ? this.experimentManager.currentSession.sessionId : null,
+        speedConfig: (this.experimentManager.currentSession && this.experimentManager.currentSession.speedConfig) ? this.experimentManager.currentSession.speedConfig : null,
         timestamp: Date.now()
       }
     }));
@@ -1881,7 +1881,7 @@ class GameCoordinator {
       // Dispatch game ended event with reason
       window.dispatchEvent(new CustomEvent('gameEnded', {
         detail: {
-          sessionId: this.experimentManager.currentSession?.sessionId,
+          sessionId: (this.experimentManager.currentSession && this.experimentManager.currentSession.sessionId) ? this.experimentManager.currentSession.sessionId : null,
           finalScore: this.points,
           gameTime: Date.now() - this.gameStartTime,
           reason: reason, // 'level_complete' or 'game_over'
@@ -1895,7 +1895,7 @@ class GameCoordinator {
       // Dispatch session ended event for other components
       window.dispatchEvent(new CustomEvent('experimentSessionEnded', {
         detail: {
-          sessionId: this.experimentManager.currentSession?.sessionId || 'unknown',
+          sessionId: (this.experimentManager.currentSession && this.experimentManager.currentSession.sessionId) ? this.experimentManager.currentSession.sessionId : 'unknown',
           completedSessions: this.experimentManager.getCompletedSessionsCount(),
           reason: reason
         }

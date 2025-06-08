@@ -371,15 +371,15 @@ class ExportManager {
         session.sessionId,
         session.userId,
         session.permutationId,
-        session.speedConfig?.pacman || '',
-        session.speedConfig?.ghost || '',
-        session.summary?.totalGhostsEaten || 0,
-        session.summary?.totalPelletsEaten || 0,
-        session.summary?.totalDeaths || 0,
-        session.summary?.successfulTurns || 0,
-        session.summary?.totalTurns || 0,
-        session.summary?.totalTurns > 0 ? session.summary.successfulTurns / session.summary.totalTurns : 0,
-        session.summary?.gameTime || 0
+        (session.speedConfig && session.speedConfig.pacman) ? session.speedConfig.pacman : '',
+        (session.speedConfig && session.speedConfig.ghost) ? session.speedConfig.ghost : '',
+        (session.summary && session.summary.totalGhostsEaten) ? session.summary.totalGhostsEaten : 0,
+        (session.summary && session.summary.totalPelletsEaten) ? session.summary.totalPelletsEaten : 0,
+        (session.summary && session.summary.totalDeaths) ? session.summary.totalDeaths : 0,
+        (session.summary && session.summary.successfulTurns) ? session.summary.successfulTurns : 0,
+        (session.summary && session.summary.totalTurns) ? session.summary.totalTurns : 0,
+        (session.summary && session.summary.totalTurns && session.summary.totalTurns > 0) ? session.summary.successfulTurns / session.summary.totalTurns : 0,
+        (session.summary && session.summary.gameTime) ? session.summary.gameTime : 0
       ]);
 
       csvSections.push('# Session Summary');
@@ -399,8 +399,8 @@ class ExportManager {
         event.type,
         event.timestamp,
         event.time,
-        event.speedConfig?.pacman || '',
-        event.speedConfig?.ghost || ''
+        (event.speedConfig && event.speedConfig.pacman) ? event.speedConfig.pacman : '',
+        (event.speedConfig && event.speedConfig.ghost) ? event.speedConfig.ghost : ''
       ]);
 
       csvSections.push('# Raw Events');

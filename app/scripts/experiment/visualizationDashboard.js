@@ -459,7 +459,7 @@ class VisualizationDashboard {
 
   renderSpeedBars(entityType, data) {
     const speeds = ['slow', 'normal', 'fast'];
-    const maxValue = Math.max(...speeds.map(speed => data[speed]?.avgGhostsEaten || 0));
+    const maxValue = Math.max(...speeds.map(speed => (data[speed] && data[speed].avgGhostsEaten) ? data[speed].avgGhostsEaten : 0));
     
     return speeds.map(speed => {
       const speedData = data[speed];
@@ -574,7 +574,7 @@ class VisualizationDashboard {
             <div style="font-size: 11px;">
               <div>Sessions: ${sessions.length}/9</div>
               <div>Completeness: ${(sessions.length / 9 * 100).toFixed(1)}%</div>
-              <div>Data Points: ${sessions.reduce((sum, s) => sum + (s.events?.length || 0), 0)}</div>
+              <div>Data Points: ${sessions.reduce((sum, s) => sum + ((s.events && s.events.length) ? s.events.length : 0), 0)}</div>
             </div>
           </div>
         </div>
@@ -990,7 +990,7 @@ class VisualizationDashboard {
       speedComparison: this.analyzeSpeedEffects(this.experimentManager.metrics),
       turnAccuracy: this.experimentManager.metrics.map(s => ({
         session: s.sessionId,
-        accuracy: s.summary?.totalTurns > 0 ? s.summary.successfulTurns / s.summary.totalTurns : 0
+        accuracy: (s.summary && s.summary.totalTurns && s.summary.totalTurns > 0) ? s.summary.successfulTurns / s.summary.totalTurns : 0
       }))
     };
   }

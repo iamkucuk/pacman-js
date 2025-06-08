@@ -1685,8 +1685,8 @@ class GameCoordinator {
     // Always dispatch experiment session started event when game starts
     window.dispatchEvent(new CustomEvent('experimentSessionStarted', {
       detail: {
-        sessionId: this.experimentManager.currentSession?.sessionId,
-        speedConfig: this.experimentManager.currentSession?.speedConfig,
+        sessionId: this.experimentManager.currentSession ? this.experimentManager.currentSession.sessionId : null,
+        speedConfig: this.experimentManager.currentSession ? this.experimentManager.currentSession.speedConfig : null,
         completedSessions: this.experimentManager.getCompletedSessionsCount() - 1
       }
     }));
@@ -1716,8 +1716,8 @@ class GameCoordinator {
     // Dispatch game started event for experiment tracking
     window.dispatchEvent(new CustomEvent('gameStarted', {
       detail: {
-        sessionId: this.experimentManager.currentSession?.sessionId,
-        speedConfig: this.experimentManager.currentSession?.speedConfig,
+        sessionId: (this.experimentManager.currentSession && this.experimentManager.currentSession.sessionId) ? this.experimentManager.currentSession.sessionId : null,
+        speedConfig: (this.experimentManager.currentSession && this.experimentManager.currentSession.speedConfig) ? this.experimentManager.currentSession.speedConfig : null,
         timestamp: Date.now()
       }
     }));
@@ -2991,7 +2991,7 @@ class GameCoordinator {
       // Dispatch game ended event with reason
       window.dispatchEvent(new CustomEvent('gameEnded', {
         detail: {
-          sessionId: this.experimentManager.currentSession?.sessionId,
+          sessionId: (this.experimentManager.currentSession && this.experimentManager.currentSession.sessionId) ? this.experimentManager.currentSession.sessionId : null,
           finalScore: this.points,
           gameTime: Date.now() - this.gameStartTime,
           reason: reason, // 'level_complete' or 'game_over'
@@ -3005,7 +3005,7 @@ class GameCoordinator {
       // Dispatch session ended event for other components
       window.dispatchEvent(new CustomEvent('experimentSessionEnded', {
         detail: {
-          sessionId: this.experimentManager.currentSession?.sessionId || 'unknown',
+          sessionId: (this.experimentManager.currentSession && this.experimentManager.currentSession.sessionId) ? this.experimentManager.currentSession.sessionId : 'unknown',
           completedSessions: this.experimentManager.getCompletedSessionsCount(),
           reason: reason
         }
@@ -3888,7 +3888,7 @@ class DataManager {
       console.log(`[DataManager] ${type} backup created:`, {
         key,
         size: JSON.stringify(data).length,
-        events: data.currentSession?.events?.length || 0
+        events: (data.currentSession && data.currentSession.events) ? data.currentSession.events.length : 0
       });
     }
   }
@@ -4986,7 +4986,7 @@ class ExperimentManager {
           if (supabaseResult && supabaseResult.success) {
             console.log('[ExperimentManager] ✅ Supabase data deleted successfully:', supabaseResult.message);
           } else {
-            console.warn('[ExperimentManager] ⚠️ Supabase deletion failed:', supabaseResult?.message || 'Unknown error');
+            console.warn('[ExperimentManager] ⚠️ Supabase deletion failed:', (supabaseResult && supabaseResult.message) ? supabaseResult.message : 'Unknown error');
             // Don't throw error here - continue with reset even if Supabase fails
           }
         } catch (error) {
@@ -5257,7 +5257,7 @@ class ExperimentUI {
       console.log('[ExperimentUI] End session button clicked - saving session and reloading');
       
       // Store the current user ID so we can auto-continue after reload
-      const currentUserId = window.gameCoordinator?.experimentManager?.userId;
+      const currentUserId = window.gameCoordinator && window.gameCoordinator.experimentManager ? window.gameCoordinator.experimentManager.userId : null;
       if (currentUserId) {
         localStorage.setItem('autoResumeUserId', currentUserId);
         // eslint-disable-next-line no-console
@@ -5272,7 +5272,7 @@ class ExperimentUI {
         // Dispatch game ended event first
         window.dispatchEvent(new CustomEvent('gameEnded', {
           detail: {
-            sessionId: window.gameCoordinator.experimentManager.currentSession?.sessionId,
+            sessionId: (window.gameCoordinator.experimentManager.currentSession && window.gameCoordinator.experimentManager.currentSession.sessionId) ? window.gameCoordinator.experimentManager.currentSession.sessionId : null,
             finalScore: window.gameCoordinator.points || 0,
             gameTime: Date.now() - (window.gameCoordinator.gameStartTime || Date.now()),
             reason: 'user_terminated',
@@ -5289,7 +5289,7 @@ class ExperimentUI {
         // Dispatch session ended event
         window.dispatchEvent(new CustomEvent('experimentSessionEnded', {
           detail: {
-            sessionId: window.gameCoordinator.experimentManager.currentSession?.sessionId || 'unknown',
+            sessionId: (window.gameCoordinator.experimentManager.currentSession && window.gameCoordinator.experimentManager.currentSession.sessionId) ? window.gameCoordinator.experimentManager.currentSession.sessionId : 'unknown',
             completedSessions: window.gameCoordinator.experimentManager.getCompletedSessionsCount(),
             reason: 'user_terminated'
           }
@@ -6193,15 +6193,15 @@ class ExportManager {
         session.sessionId,
         session.userId,
         session.permutationId,
-        session.speedConfig?.pacman || '',
-        session.speedConfig?.ghost || '',
-        session.summary?.totalGhostsEaten || 0,
-        session.summary?.totalPelletsEaten || 0,
-        session.summary?.totalDeaths || 0,
-        session.summary?.successfulTurns || 0,
-        session.summary?.totalTurns || 0,
-        session.summary?.totalTurns > 0 ? session.summary.successfulTurns / session.summary.totalTurns : 0,
-        session.summary?.gameTime || 0
+        (session.speedConfig && session.speedConfig.pacman) ? session.speedConfig.pacman : '',
+        (session.speedConfig && session.speedConfig.ghost) ? session.speedConfig.ghost : '',
+        (session.summary && session.summary.totalGhostsEaten) ? session.summary.totalGhostsEaten : 0,
+        (session.summary && session.summary.totalPelletsEaten) ? session.summary.totalPelletsEaten : 0,
+        (session.summary && session.summary.totalDeaths) ? session.summary.totalDeaths : 0,
+        (session.summary && session.summary.successfulTurns) ? session.summary.successfulTurns : 0,
+        (session.summary && session.summary.totalTurns) ? session.summary.totalTurns : 0,
+        (session.summary && session.summary.totalTurns && session.summary.totalTurns > 0) ? session.summary.successfulTurns / session.summary.totalTurns : 0,
+        (session.summary && session.summary.gameTime) ? session.summary.gameTime : 0
       ]);
 
       csvSections.push('# Session Summary');
@@ -6221,8 +6221,8 @@ class ExportManager {
         event.type,
         event.timestamp,
         event.time,
-        event.speedConfig?.pacman || '',
-        event.speedConfig?.ghost || ''
+        (event.speedConfig && event.speedConfig.pacman) ? event.speedConfig.pacman : '',
+        (event.speedConfig && event.speedConfig.ghost) ? event.speedConfig.ghost : ''
       ]);
 
       csvSections.push('# Raw Events');
@@ -8012,7 +8012,7 @@ class SessionManager {
       ? completed.reduce((sum, s) => sum + s.duration, 0) / completed.length 
       : 0;
     
-    const totalEvents = completed.reduce((sum, s) => sum + (s.events?.length || 0), 0);
+    const totalEvents = completed.reduce((sum, s) => sum + ((s.events && s.events.length) ? s.events.length : 0), 0);
     
     return {
       totalSessions: this.sessionHistory.length,
@@ -8025,8 +8025,8 @@ class SessionManager {
         speedConfig: s.speedConfig,
         duration: s.duration,
         completed: s.completed,
-        events: s.events?.length || 0,
-        milestones: s.milestones?.length || 0
+        events: (s.events && s.events.length) ? s.events.length : 0,
+        milestones: (s.milestones && s.milestones.length) ? s.milestones.length : 0
       }))
     };
   }
@@ -8867,9 +8867,9 @@ class SupabaseDataManager {
       ]);
 
       return {
-        totalUsers: usersResult.data?.[0]?.count || 0,
-        totalSessions: sessionsResult.data?.[0]?.count || 0,
-        totalEvents: eventsResult.data?.[0]?.count || 0,
+        totalUsers: (usersResult.data && usersResult.data[0] && usersResult.data[0].count) ? usersResult.data[0].count : 0,
+        totalSessions: (sessionsResult.data && sessionsResult.data[0] && sessionsResult.data[0].count) ? sessionsResult.data[0].count : 0,
+        totalEvents: (eventsResult.data && eventsResult.data[0] && eventsResult.data[0].count) ? eventsResult.data[0].count : 0,
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
@@ -8937,7 +8937,7 @@ class SupabaseDataManager {
           console.error('[SupabaseDataManager] Error deleting events:', eventsError);
           throw eventsError;
         }
-        console.log('[SupabaseDataManager] ✅ Deleted events:', deletedEvents?.length || 0);
+        console.log('[SupabaseDataManager] ✅ Deleted events:', (deletedEvents && deletedEvents.length) ? deletedEvents.length : 0);
 
         // Delete session summaries
         console.log('[SupabaseDataManager] 🗑️ Deleting session summaries for sessions:', sessionIds);
@@ -8951,7 +8951,7 @@ class SupabaseDataManager {
           console.error('[SupabaseDataManager] Error deleting session summaries:', summariesError);
           throw summariesError;
         }
-        console.log('[SupabaseDataManager] ✅ Deleted session summaries:', deletedSummaries?.length || 0);
+        console.log('[SupabaseDataManager] ✅ Deleted session summaries:', (deletedSummaries && deletedSummaries.length) ? deletedSummaries.length : 0);
 
         // Delete sessions
         console.log('[SupabaseDataManager] 🗑️ Deleting sessions for user:', userId);
@@ -8965,7 +8965,7 @@ class SupabaseDataManager {
           console.error('[SupabaseDataManager] Error deleting sessions:', sessionsError);
           throw sessionsError;
         }
-        console.log('[SupabaseDataManager] ✅ Deleted sessions:', deletedSessions?.length || 0);
+        console.log('[SupabaseDataManager] ✅ Deleted sessions:', (deletedSessions && deletedSessions.length) ? deletedSessions.length : 0);
       } else {
         console.log('[SupabaseDataManager] ℹ️ No sessions found for user:', userId);
       }
@@ -8998,7 +8998,7 @@ class SupabaseDataManager {
         .select('user_id')
         .eq('user_id', userId);
 
-      if (remainingSessions?.length > 0 || remainingUser?.length > 0) {
+      if ((remainingSessions && remainingSessions.length > 0) || (remainingUser && remainingUser.length > 0)) {
         console.error('[SupabaseDataManager] ⚠️ Deletion verification failed - data still exists!');
         console.error('Remaining sessions:', remainingSessions);
         console.error('Remaining user:', remainingUser);
@@ -9555,7 +9555,7 @@ class VisualizationDashboard {
 
   renderSpeedBars(entityType, data) {
     const speeds = ['slow', 'normal', 'fast'];
-    const maxValue = Math.max(...speeds.map(speed => data[speed]?.avgGhostsEaten || 0));
+    const maxValue = Math.max(...speeds.map(speed => (data[speed] && data[speed].avgGhostsEaten) ? data[speed].avgGhostsEaten : 0));
     
     return speeds.map(speed => {
       const speedData = data[speed];
@@ -9670,7 +9670,7 @@ class VisualizationDashboard {
             <div style="font-size: 11px;">
               <div>Sessions: ${sessions.length}/9</div>
               <div>Completeness: ${(sessions.length / 9 * 100).toFixed(1)}%</div>
-              <div>Data Points: ${sessions.reduce((sum, s) => sum + (s.events?.length || 0), 0)}</div>
+              <div>Data Points: ${sessions.reduce((sum, s) => sum + ((s.events && s.events.length) ? s.events.length : 0), 0)}</div>
             </div>
           </div>
         </div>
@@ -10086,7 +10086,7 @@ class VisualizationDashboard {
       speedComparison: this.analyzeSpeedEffects(this.experimentManager.metrics),
       turnAccuracy: this.experimentManager.metrics.map(s => ({
         session: s.sessionId,
-        accuracy: s.summary?.totalTurns > 0 ? s.summary.successfulTurns / s.summary.totalTurns : 0
+        accuracy: (s.summary && s.summary.totalTurns && s.summary.totalTurns > 0) ? s.summary.successfulTurns / s.summary.totalTurns : 0
       }))
     };
   }

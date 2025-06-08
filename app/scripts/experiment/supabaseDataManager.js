@@ -520,9 +520,9 @@ class SupabaseDataManager {
       ]);
 
       return {
-        totalUsers: usersResult.data?.[0]?.count || 0,
-        totalSessions: sessionsResult.data?.[0]?.count || 0,
-        totalEvents: eventsResult.data?.[0]?.count || 0,
+        totalUsers: (usersResult.data && usersResult.data[0] && usersResult.data[0].count) ? usersResult.data[0].count : 0,
+        totalSessions: (sessionsResult.data && sessionsResult.data[0] && sessionsResult.data[0].count) ? sessionsResult.data[0].count : 0,
+        totalEvents: (eventsResult.data && eventsResult.data[0] && eventsResult.data[0].count) ? eventsResult.data[0].count : 0,
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
@@ -590,7 +590,7 @@ class SupabaseDataManager {
           console.error('[SupabaseDataManager] Error deleting events:', eventsError);
           throw eventsError;
         }
-        console.log('[SupabaseDataManager] ✅ Deleted events:', deletedEvents?.length || 0);
+        console.log('[SupabaseDataManager] ✅ Deleted events:', (deletedEvents && deletedEvents.length) ? deletedEvents.length : 0);
 
         // Delete session summaries
         console.log('[SupabaseDataManager] 🗑️ Deleting session summaries for sessions:', sessionIds);
@@ -604,7 +604,7 @@ class SupabaseDataManager {
           console.error('[SupabaseDataManager] Error deleting session summaries:', summariesError);
           throw summariesError;
         }
-        console.log('[SupabaseDataManager] ✅ Deleted session summaries:', deletedSummaries?.length || 0);
+        console.log('[SupabaseDataManager] ✅ Deleted session summaries:', (deletedSummaries && deletedSummaries.length) ? deletedSummaries.length : 0);
 
         // Delete sessions
         console.log('[SupabaseDataManager] 🗑️ Deleting sessions for user:', userId);
@@ -618,7 +618,7 @@ class SupabaseDataManager {
           console.error('[SupabaseDataManager] Error deleting sessions:', sessionsError);
           throw sessionsError;
         }
-        console.log('[SupabaseDataManager] ✅ Deleted sessions:', deletedSessions?.length || 0);
+        console.log('[SupabaseDataManager] ✅ Deleted sessions:', (deletedSessions && deletedSessions.length) ? deletedSessions.length : 0);
       } else {
         console.log('[SupabaseDataManager] ℹ️ No sessions found for user:', userId);
       }
@@ -651,7 +651,7 @@ class SupabaseDataManager {
         .select('user_id')
         .eq('user_id', userId);
 
-      if (remainingSessions?.length > 0 || remainingUser?.length > 0) {
+      if ((remainingSessions && remainingSessions.length > 0) || (remainingUser && remainingUser.length > 0)) {
         console.error('[SupabaseDataManager] ⚠️ Deletion verification failed - data still exists!');
         console.error('Remaining sessions:', remainingSessions);
         console.error('Remaining user:', remainingUser);

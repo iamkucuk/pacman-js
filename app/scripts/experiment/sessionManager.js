@@ -396,7 +396,7 @@ class SessionManager {
       ? completed.reduce((sum, s) => sum + s.duration, 0) / completed.length 
       : 0;
     
-    const totalEvents = completed.reduce((sum, s) => sum + (s.events?.length || 0), 0);
+    const totalEvents = completed.reduce((sum, s) => sum + ((s.events && s.events.length) ? s.events.length : 0), 0);
     
     return {
       totalSessions: this.sessionHistory.length,
@@ -409,8 +409,8 @@ class SessionManager {
         speedConfig: s.speedConfig,
         duration: s.duration,
         completed: s.completed,
-        events: s.events?.length || 0,
-        milestones: s.milestones?.length || 0
+        events: (s.events && s.events.length) ? s.events.length : 0,
+        milestones: (s.milestones && s.milestones.length) ? s.milestones.length : 0
       }))
     };
   }

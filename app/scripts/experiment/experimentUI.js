@@ -162,7 +162,7 @@ class ExperimentUI {
       console.log('[ExperimentUI] End session button clicked - saving session and reloading');
       
       // Store the current user ID so we can auto-continue after reload
-      const currentUserId = window.gameCoordinator?.experimentManager?.userId;
+      const currentUserId = window.gameCoordinator && window.gameCoordinator.experimentManager ? window.gameCoordinator.experimentManager.userId : null;
       if (currentUserId) {
         localStorage.setItem('autoResumeUserId', currentUserId);
         // eslint-disable-next-line no-console
@@ -177,7 +177,7 @@ class ExperimentUI {
         // Dispatch game ended event first
         window.dispatchEvent(new CustomEvent('gameEnded', {
           detail: {
-            sessionId: window.gameCoordinator.experimentManager.currentSession?.sessionId,
+            sessionId: (window.gameCoordinator.experimentManager.currentSession && window.gameCoordinator.experimentManager.currentSession.sessionId) ? window.gameCoordinator.experimentManager.currentSession.sessionId : null,
             finalScore: window.gameCoordinator.points || 0,
             gameTime: Date.now() - (window.gameCoordinator.gameStartTime || Date.now()),
             reason: 'user_terminated',
@@ -194,7 +194,7 @@ class ExperimentUI {
         // Dispatch session ended event
         window.dispatchEvent(new CustomEvent('experimentSessionEnded', {
           detail: {
-            sessionId: window.gameCoordinator.experimentManager.currentSession?.sessionId || 'unknown',
+            sessionId: (window.gameCoordinator.experimentManager.currentSession && window.gameCoordinator.experimentManager.currentSession.sessionId) ? window.gameCoordinator.experimentManager.currentSession.sessionId : 'unknown',
             completedSessions: window.gameCoordinator.experimentManager.getCompletedSessionsCount(),
             reason: 'user_terminated'
           }

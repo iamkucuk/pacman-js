@@ -1051,7 +1051,7 @@ class ExperimentManager {
           if (supabaseResult && supabaseResult.success) {
             console.log('[ExperimentManager] ✅ Supabase data deleted successfully:', supabaseResult.message);
           } else {
-            console.warn('[ExperimentManager] ⚠️ Supabase deletion failed:', supabaseResult?.message || 'Unknown error');
+            console.warn('[ExperimentManager] ⚠️ Supabase deletion failed:', (supabaseResult && supabaseResult.message) ? supabaseResult.message : 'Unknown error');
             // Don't throw error here - continue with reset even if Supabase fails
           }
         } catch (error) {

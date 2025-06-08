@@ -488,7 +488,7 @@ class DataManager {
       console.log(`[DataManager] ${type} backup created:`, {
         key,
         size: JSON.stringify(data).length,
-        events: data.currentSession?.events?.length || 0
+        events: (data.currentSession && data.currentSession.events) ? data.currentSession.events.length : 0
       });
     }
   }

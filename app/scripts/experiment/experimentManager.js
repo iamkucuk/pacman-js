@@ -601,7 +601,10 @@ class ExperimentManager {
       return; // Don't end session automatically
     }
     
-    if (!this.isExperimentActive || !this.currentMetrics) return;
+    if (!this.isExperimentActive || !this.currentMetrics) {
+      console.log('[ExperimentManager] 🚫 Early return from endSession - isActive:', this.isExperimentActive, 'hasMetrics:', !!this.currentMetrics);
+      return;
+    }
 
     // Ensure timer is properly stopped and calculate final time
     if (this.lastPauseStart) {

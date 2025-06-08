@@ -1110,6 +1110,7 @@ class Pacman {
 
 class GameCoordinator {
   constructor() {
+    console.log('🚀 NEW MULTI-GAME VERSION LOADED - BUILD 2025-01-06-2100 🚀');
     this.gameUi = document.getElementById('game-ui');
     this.rowTop = document.getElementById('row-top');
     this.mazeDiv = document.getElementById('maze');
@@ -3035,13 +3036,14 @@ class GameCoordinator {
       this.experimentManager.endSession(this.points);
 
       // Dispatch session ended event for other components
-      window.dispatchEvent(new CustomEvent('experimentSessionEnded', {
-        detail: {
-          sessionId: (this.experimentManager.currentSession && this.experimentManager.currentSession.sessionId) ? this.experimentManager.currentSession.sessionId : 'unknown',
-          completedSessions: this.experimentManager.getCompletedSessionsCount(),
-          reason,
-        },
-      }));
+      console.log('[GameCoordinator] 🚨 WOULD dispatch experimentSessionEnded event, but BLOCKING for debug');
+      // window.dispatchEvent(new CustomEvent('experimentSessionEnded', {
+      //   detail: {
+      //     sessionId: (this.experimentManager.currentSession && this.experimentManager.currentSession.sessionId) ? this.experimentManager.currentSession.sessionId : 'unknown',
+      //     completedSessions: this.experimentManager.getCompletedSessionsCount(),
+      //     reason,
+      //   },
+      // }));
 
       // Show session transition UI only when session actually ends
       this.showSessionTransition();
@@ -4571,7 +4573,10 @@ class ExperimentManager {
       return; // Don't end session automatically
     }
     
-    if (!this.isExperimentActive || !this.currentMetrics) return;
+    if (!this.isExperimentActive || !this.currentMetrics) {
+      console.log('[ExperimentManager] 🚫 Early return from endSession - isActive:', this.isExperimentActive, 'hasMetrics:', !!this.currentMetrics);
+      return;
+    }
 
     // Ensure timer is properly stopped and calculate final time
     if (this.lastPauseStart) {

@@ -1830,7 +1830,7 @@ class GameCoordinator {
                       top: this.scaledTileSize * 16.5,
                     },
                     'ready', // Reusing "ready" text as "level complete"
-                    3000,
+                    2000, // Changed from 3000 to 2000 for verification
                     this.scaledTileSize * 12,
                     this.scaledTileSize * 2,
                   );
@@ -1838,7 +1838,7 @@ class GameCoordinator {
                   new Timer(() => {
                     // For research purposes, end session when level is completed
                     this.levelCompleteEndSession();
-                  }, 3000);
+                  }, 2000); // Changed from 3000 to 2000 for verification
                 }, 250);
               }, 250);
             }, 250);
@@ -1852,6 +1852,7 @@ class GameCoordinator {
    * Ends session when level is completed (all dots collected)
    */
   levelCompleteEndSession() {
+    console.log('[GameCoordinator] 🔄 Level complete - ending current game, NOT session');
     localStorage.setItem('highScore', this.highScore);
 
     // End current game (not session) with level complete reason
@@ -1862,6 +1863,7 @@ class GameCoordinator {
 
     setTimeout(() => {
       // In multi-game sessions, restart the game instead of showing session transition
+      console.log('[GameCoordinator] 🎮 Restarting game within same session');
       this.restartGameInSession();
     }, 1000);
   }
@@ -1870,6 +1872,7 @@ class GameCoordinator {
    * End current game and dispatch game ended event for multi-game sessions
    */
   endCurrentGame(reason) {
+    console.log('[GameCoordinator] 🏁 Ending current game with reason:', reason);
     if (this.experimentManager.isExperimentActive) {
       // Dispatch game ended event with reason
       window.dispatchEvent(new CustomEvent('gameEnded', {
@@ -1888,6 +1891,7 @@ class GameCoordinator {
    * Restart the game within the current session (for multi-game sessions)
    */
   restartGameInSession() {
+    console.log('[GameCoordinator] 🎮 Restarting game within session - NOT advancing to next session');
     // Reset game state but keep session active
     this.reset();
     this.startGameplay(true);

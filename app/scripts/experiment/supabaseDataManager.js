@@ -21,7 +21,7 @@ class SupabaseDataManager {
 
       this.supabase = window.supabase.createClient(
         this.supabaseUrl,
-        this.supabaseKey
+        this.supabaseKey,
       );
 
       this.isInitialized = true;
@@ -118,7 +118,7 @@ class SupabaseDataManager {
       console.log('[SupabaseDataManager] 📝 Session order updated for:', userId);
       return true;
     } catch (error) {
-      console.error('[SupabaseDataManager] Error updating session order:', 
+      console.error('[SupabaseDataManager] Error updating session order:',
         error);
       return false;
     }
@@ -184,7 +184,7 @@ class SupabaseDataManager {
       console.log('[SupabaseDataManager] 📊 Session summary created');
       return summary;
     } catch (error) {
-      console.error('[SupabaseDataManager] Error creating session summary:', 
+      console.error('[SupabaseDataManager] Error creating session summary:',
         error);
       throw error;
     }
@@ -244,7 +244,7 @@ class SupabaseDataManager {
 
       return true;
     } catch (error) {
-      console.error('[SupabaseDataManager] Error updating session summary:', 
+      console.error('[SupabaseDataManager] Error updating session summary:',
         error);
       return false;
     }
@@ -273,7 +273,7 @@ class SupabaseDataManager {
       }
 
       const scores = sessions.map(s => s.final_score).filter(score => score !== null);
-      
+
       if (scores.length === 0) {
         console.log('[SupabaseDataManager] No valid scores found');
         return true;
@@ -283,7 +283,7 @@ class SupabaseDataManager {
       const highestScore = Math.max(...scores);
       const lowestScore = Math.min(...scores);
       const averageScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-      
+
       // Calculate standard deviation
       const variance = scores.reduce((acc, score) => acc + Math.pow(score - averageScore, 2), 0) / scores.length;
       const stdDev = Math.sqrt(variance);
@@ -293,7 +293,7 @@ class SupabaseDataManager {
         highest: highestScore,
         lowest: lowestScore,
         average: averageScore.toFixed(2),
-        stdDev: stdDev.toFixed(2)
+        stdDev: stdDev.toFixed(2),
       });
 
       // Update all session summaries for this user with the statistics
@@ -305,16 +305,14 @@ class SupabaseDataManager {
           average_score: parseFloat(averageScore.toFixed(2)),
           score_std_dev: parseFloat(stdDev.toFixed(2)),
         })
-        .in('session_id', 
-          sessions.map(session => 
+        .in('session_id',
+          sessions.map(session =>
             // We need to get session IDs, so let's do this differently
             this.supabase
               .from('sessions')
               .select('id')
               .eq('user_id', userId)
-              .eq('status', 'completed')
-          )
-        );
+              .eq('status', 'completed')));
 
       // Actually, let's do this with a different approach - update via user sessions
       const { data: userSessions, error: userSessionsError } = await this.supabase
@@ -327,7 +325,7 @@ class SupabaseDataManager {
 
       if (userSessions && userSessions.length > 0) {
         const sessionIds = userSessions.map(s => s.id);
-        
+
         const { error: finalUpdateError } = await this.supabase
           .from('session_summaries')
           .update({
@@ -368,7 +366,7 @@ class SupabaseDataManager {
 
       if (error) throw error;
 
-      console.log('[SupabaseDataManager] ✅ Session completed:', 
+      console.log('[SupabaseDataManager] ✅ Session completed:',
         this.currentSessionId);
       this.currentSessionId = null;
       return true;
@@ -481,7 +479,7 @@ class SupabaseDataManager {
 
       return data;
     } catch (error) {
-      console.error('[SupabaseDataManager] Error getting research data:', 
+      console.error('[SupabaseDataManager] Error getting research data:',
         error);
       return null;
     }
@@ -526,7 +524,7 @@ class SupabaseDataManager {
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
-      console.error('[SupabaseDataManager] Error getting health stats:', 
+      console.error('[SupabaseDataManager] Error getting health stats:',
         error);
       return null;
     }
@@ -729,10 +727,10 @@ class SupabaseDataManager {
       }
 
       console.log('[SupabaseDataManager] 🎉 Successfully deleted last session:', lastSession.session_id);
-      return { 
-        success: true, 
+      return {
+        success: true,
         message: `Deleted session ${lastSession.session_id}`,
-        deletedSessionId: lastSession.session_id 
+        deletedSessionId: lastSession.session_id,
       };
     } catch (error) {
       console.error('[SupabaseDataManager] ❌ Error deleting last session:', error);

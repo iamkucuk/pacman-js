@@ -13,7 +13,7 @@ class VisualizationDashboard {
       accent: '#FF9800',
       error: '#F44336',
       success: '#8BC34A',
-      warning: '#FFC107'
+      warning: '#FFC107',
     };
     this.isInitialized = false;
     this.DEBUG = true;
@@ -21,11 +21,11 @@ class VisualizationDashboard {
 
   initialize() {
     if (this.isInitialized) return;
-    
+
     this.createDashboardStructure();
     this.bindEvents();
     this.isInitialized = true;
-    
+
     if (this.DEBUG) {
       console.log('[VisualizationDashboard] Initialized');
     }
@@ -130,7 +130,7 @@ class VisualizationDashboard {
     });
 
     // Tab switching
-    document.querySelectorAll('.dashboard-tab').forEach(tab => {
+    document.querySelectorAll('.dashboard-tab').forEach((tab) => {
       tab.addEventListener('click', () => {
         this.switchTab(tab.dataset.tab);
       });
@@ -148,7 +148,7 @@ class VisualizationDashboard {
 
   switchTab(tabName) {
     // Update tab buttons
-    document.querySelectorAll('.dashboard-tab').forEach(tab => {
+    document.querySelectorAll('.dashboard-tab').forEach((tab) => {
       tab.classList.remove('active');
       if (tab.dataset.tab === tabName) {
         tab.classList.add('active');
@@ -159,10 +159,10 @@ class VisualizationDashboard {
     });
 
     // Show/hide content
-    document.querySelectorAll('.dashboard-content').forEach(content => {
+    document.querySelectorAll('.dashboard-content').forEach((content) => {
       content.style.display = 'none';
     });
-    
+
     const targetContent = document.getElementById(`tab-${tabName}`);
     if (targetContent) {
       targetContent.style.display = 'block';
@@ -257,13 +257,13 @@ class VisualizationDashboard {
     const container = document.getElementById('current-session-chart');
     if (!container) return;
 
-    const currentMetrics = this.experimentManager.currentMetrics;
+    const { currentMetrics } = this.experimentManager;
     if (!currentMetrics) {
       container.innerHTML = '<div style="text-align: center; color: #666; padding: 20px;">No active session</div>';
       return;
     }
 
-    const summary = currentMetrics.summary;
+    const { summary } = currentMetrics;
     const maxGhosts = 20; // Reasonable maximum for visualization
     const maxPellets = 200;
 
@@ -324,7 +324,7 @@ class VisualizationDashboard {
     if (!container) return;
 
     const sessions = this.experimentManager.metrics;
-    const sessionOrder = this.experimentManager.sessionOrder;
+    const { sessionOrder } = this.experimentManager;
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
 
     let progressHTML = `
@@ -338,11 +338,11 @@ class VisualizationDashboard {
       const isCurrent = i === completedSessions && this.experimentManager.isExperimentActive;
       const permutationId = sessionOrder[i];
       const config = permutationId !== undefined ? this.experimentManager.PERMUTATIONS[permutationId] : null;
-      
+
       let bgColor = '#333';
       let textColor = '#666';
       let borderColor = 'transparent';
-      
+
       if (isCompleted) {
         bgColor = '#4CAF50';
         textColor = 'white';
@@ -459,15 +459,15 @@ class VisualizationDashboard {
 
   renderSpeedBars(entityType, data) {
     const speeds = ['slow', 'normal', 'fast'];
-    const maxValue = Math.max(...speeds.map(speed => (data[speed] && data[speed].avgGhostsEaten) ? data[speed].avgGhostsEaten : 0));
-    
-    return speeds.map(speed => {
+    const maxValue = Math.max(...speeds.map(speed => ((data[speed] && data[speed].avgGhostsEaten) ? data[speed].avgGhostsEaten : 0)));
+
+    return speeds.map((speed) => {
       const speedData = data[speed];
       if (!speedData) return '';
-      
+
       const value = speedData.avgGhostsEaten;
       const percentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
-      
+
       return `
         <div style="margin-bottom: 8px;">
           <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
@@ -503,10 +503,10 @@ class VisualizationDashboard {
 
     const accuracyData = sessions.map((session, index) => ({
       session: index + 1,
-      accuracy: session.summary && session.summary.totalTurns > 0 
-        ? session.summary.successfulTurns / session.summary.totalTurns 
+      accuracy: session.summary && session.summary.totalTurns > 0
+        ? session.summary.successfulTurns / session.summary.totalTurns
         : 0,
-      config: session.speedConfig
+      config: session.speedConfig,
     }));
 
     const maxAccuracy = Math.max(...accuracyData.map(d => d.accuracy));
@@ -591,7 +591,7 @@ class VisualizationDashboard {
 
   renderConfigDistribution(sessions) {
     const configCounts = {};
-    sessions.forEach(session => {
+    sessions.forEach((session) => {
       if (session.speedConfig) {
         const key = `${session.speedConfig.pacman}-${session.speedConfig.ghost}`;
         configCounts[key] = (configCounts[key] || 0) + 1;
@@ -686,7 +686,7 @@ class VisualizationDashboard {
 
   // Statistical calculation methods
   calculateSessionStats(sessions) {
-    const getValues = (field) => sessions
+    const getValues = field => sessions
       .filter(s => s.summary && s.summary[field] !== undefined)
       .map(s => s.summary[field]);
 
@@ -698,23 +698,27 @@ class VisualizationDashboard {
       ghosts: this.getStatSummary(getValues('totalGhostsEaten')),
       pellets: this.getStatSummary(getValues('totalPelletsEaten')),
       deaths: this.getStatSummary(getValues('totalDeaths')),
-      accuracy: this.getStatSummary(accuracyValues)
+      accuracy: this.getStatSummary(accuracyValues),
     };
   }
 
   getStatSummary(values) {
-    if (values.length === 0) return { avg: 0, max: 0, min: 0, total: 0 };
-    
+    if (values.length === 0) {
+      return {
+        avg: 0, max: 0, min: 0, total: 0,
+      };
+    }
+
     return {
       avg: values.reduce((sum, val) => sum + val, 0) / values.length,
       max: Math.max(...values),
       min: Math.min(...values),
-      total: values.reduce((sum, val) => sum + val, 0)
+      total: values.reduce((sum, val) => sum + val, 0),
     };
   }
 
   calculateAdvancedStats(sessions) {
-    const getValues = (field) => sessions
+    const getValues = field => sessions
       .filter(s => s.summary && s.summary[field] !== undefined)
       .map(s => s.summary[field]);
 
@@ -725,29 +729,29 @@ class VisualizationDashboard {
     return {
       ghosts: this.calculateMeanStd(getValues('totalGhostsEaten')),
       pellets: this.calculateMeanStd(getValues('totalPelletsEaten')),
-      accuracy: this.calculateMeanStd(accuracyValues)
+      accuracy: this.calculateMeanStd(accuracyValues),
     };
   }
 
   calculateMeanStd(values) {
     if (values.length === 0) return { mean: 0, std: 0 };
-    
+
     const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
     const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
-    
+
     return {
       mean,
-      std: Math.sqrt(variance)
+      std: Math.sqrt(variance),
     };
   }
 
   analyzeSpeedEffects(sessions) {
     const speedGroups = {
       pacman: { slow: [], normal: [], fast: [] },
-      ghost: { slow: [], normal: [], fast: [] }
+      ghost: { slow: [], normal: [], fast: [] },
     };
 
-    sessions.forEach(session => {
+    sessions.forEach((session) => {
       if (session.speedConfig && session.summary) {
         speedGroups.pacman[session.speedConfig.pacman].push(session.summary);
         speedGroups.ghost[session.speedConfig.ghost].push(session.summary);
@@ -756,10 +760,10 @@ class VisualizationDashboard {
 
     const analysis = {};
 
-    ['pacman', 'ghost'].forEach(entityType => {
+    ['pacman', 'ghost'].forEach((entityType) => {
       analysis[entityType] = {};
-      
-      ['slow', 'normal', 'fast'].forEach(speed => {
+
+      ['slow', 'normal', 'fast'].forEach((speed) => {
         const group = speedGroups[entityType][speed];
         if (group.length > 0) {
           analysis[entityType][speed] = {
@@ -767,9 +771,7 @@ class VisualizationDashboard {
             avgGhostsEaten: group.reduce((sum, s) => sum + (s.totalGhostsEaten || 0), 0) / group.length,
             avgPelletsEaten: group.reduce((sum, s) => sum + (s.totalPelletsEaten || 0), 0) / group.length,
             avgDeaths: group.reduce((sum, s) => sum + (s.totalDeaths || 0), 0) / group.length,
-            avgTurnAccuracy: group.reduce((sum, s) => 
-              sum + (s.totalTurns > 0 ? s.successfulTurns / s.totalTurns : 0), 0
-            ) / group.length
+            avgTurnAccuracy: group.reduce((sum, s) => sum + (s.totalTurns > 0 ? s.successfulTurns / s.totalTurns : 0), 0) / group.length,
           };
         }
       });
@@ -786,7 +788,7 @@ class VisualizationDashboard {
       for (let j = i + 1; j < variables.length; j++) {
         const var1 = variables[i];
         const var2 = variables[j];
-        
+
         const values1 = sessions
           .filter(s => s.summary && s.summary[var1] !== undefined)
           .map(s => s.summary[var1]);
@@ -799,7 +801,7 @@ class VisualizationDashboard {
           correlations.push({
             var1: var1.replace(/total/g, '').toLowerCase(),
             var2: var2.replace(/total/g, '').toLowerCase(),
-            value: correlation
+            value: correlation,
           });
         }
       }
@@ -828,7 +830,7 @@ class VisualizationDashboard {
     const variables = ['totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths'];
     const trends = {};
 
-    variables.forEach(variable => {
+    variables.forEach((variable) => {
       const values = sessions
         .filter(s => s.summary && s.summary[variable] !== undefined)
         .map((s, index) => ({ x: index + 1, y: s.summary[variable] }));
@@ -867,7 +869,7 @@ class VisualizationDashboard {
       this.dashboardContainer.style.right = '0px';
       this.isVisible = true;
       this.updateDashboard();
-      
+
       if (this.DEBUG) {
         console.log('[VisualizationDashboard] Dashboard shown');
       }
@@ -878,7 +880,7 @@ class VisualizationDashboard {
     if (this.dashboardContainer) {
       this.dashboardContainer.style.right = '-500px';
       this.isVisible = false;
-      
+
       if (this.DEBUG) {
         console.log('[VisualizationDashboard] Dashboard hidden');
       }
@@ -887,7 +889,7 @@ class VisualizationDashboard {
 
   updateDashboard() {
     if (!this.isVisible) return;
-    
+
     const activeTab = document.querySelector('.dashboard-tab.active');
     if (activeTab) {
       this.updateTabContent(activeTab.dataset.tab);
@@ -917,7 +919,7 @@ class VisualizationDashboard {
     // Show dashboard with complete experiment analysis
     this.showDashboard();
     this.updateDashboard();
-    
+
     // Switch to analytics tab for completion
     this.switchTab('analytics');
   }
@@ -929,13 +931,13 @@ class VisualizationDashboard {
       dashboardSnapshot: {
         overview: this.getDashboardSnapshot('overview'),
         performance: this.getDashboardSnapshot('performance'),
-        analytics: this.getDashboardSnapshot('analytics')
-      }
+        analytics: this.getDashboardSnapshot('analytics'),
+      },
     };
 
     const content = JSON.stringify(dashboardData, null, 2);
     const filename = `dashboard_${this.experimentManager.userId}_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-    
+
     this.downloadFile(filename, content, 'application/json');
   }
 
@@ -944,7 +946,7 @@ class VisualizationDashboard {
     return {
       tabName,
       lastUpdated: new Date().toISOString(),
-      data: this.gatherTabData(tabName)
+      data: this.gatherTabData(tabName),
     };
   }
 
@@ -954,20 +956,20 @@ class VisualizationDashboard {
         return {
           experimentStatus: {
             completedSessions: this.experimentManager.getCompletedSessionsCount(),
-            currentSession: this.experimentManager.getCurrentSessionInfo()
+            currentSession: this.experimentManager.getCurrentSessionInfo(),
           },
-          sessionProgress: this.experimentManager.sessionOrder
+          sessionProgress: this.experimentManager.sessionOrder,
         };
       case 'performance':
         return {
           sessionStats: this.calculateSessionStats(this.experimentManager.metrics),
-          speedAnalysis: this.analyzeSpeedEffects(this.experimentManager.metrics)
+          speedAnalysis: this.analyzeSpeedEffects(this.experimentManager.metrics),
         };
       case 'analytics':
         return {
           statisticalSummary: this.calculateAdvancedStats(this.experimentManager.metrics),
           correlations: this.calculateCorrelations(this.experimentManager.metrics),
-          trends: this.calculateTrends(this.experimentManager.metrics)
+          trends: this.calculateTrends(this.experimentManager.metrics),
         };
       default:
         return {};
@@ -979,7 +981,7 @@ class VisualizationDashboard {
     const chartData = this.generateChartExport();
     const content = JSON.stringify(chartData, null, 2);
     const filename = `charts_${this.experimentManager.userId}_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
-    
+
     this.downloadFile(filename, content, 'application/json');
   }
 
@@ -990,8 +992,8 @@ class VisualizationDashboard {
       speedComparison: this.analyzeSpeedEffects(this.experimentManager.metrics),
       turnAccuracy: this.experimentManager.metrics.map(s => ({
         session: s.sessionId,
-        accuracy: (s.summary && s.summary.totalTurns && s.summary.totalTurns > 0) ? s.summary.successfulTurns / s.summary.totalTurns : 0
-      }))
+        accuracy: (s.summary && s.summary.totalTurns && s.summary.totalTurns > 0) ? s.summary.successfulTurns / s.summary.totalTurns : 0,
+      })),
     };
   }
 
@@ -1013,18 +1015,18 @@ class VisualizationDashboard {
       isVisible: this.isVisible,
       chartsActive: Object.keys(this.charts).length,
       updateInterval: this.updateInterval !== null,
-      dashboardContainer: this.dashboardContainer !== null
+      dashboardContainer: this.dashboardContainer !== null,
     };
   }
 
   destroy() {
     this.stopRealTimeUpdates();
-    
+
     if (this.dashboardContainer) {
       this.dashboardContainer.remove();
       this.dashboardContainer = null;
     }
-    
+
     this.charts = {};
     this.isVisible = false;
     this.isInitialized = false;

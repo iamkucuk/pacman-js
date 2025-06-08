@@ -28,7 +28,7 @@ class ExperimentManager {
     this.supabaseInitializing = false;
     this.supabaseInitialized = false;
     this.dataLoadedFromSupabase = false; // Track if we successfully loaded from Supabase
-    
+
     // Database migration detection - clear localStorage if database changed
     this.checkDatabaseMigration();
     this.initializeSupabase();
@@ -38,16 +38,16 @@ class ExperimentManager {
     // Expected database identifier for current deployment
     const currentDatabaseId = 'kozbxghtgtnoldywzdmg';
     const storageKey = 'experiment_database_id';
-    
+
     try {
       const storedDatabaseId = localStorage.getItem(storageKey);
-      
+
       if (storedDatabaseId && storedDatabaseId !== currentDatabaseId) {
         console.log('[ExperimentManager] 🔄 Database migration detected!');
         console.log('[ExperimentManager] Old database:', storedDatabaseId);
         console.log('[ExperimentManager] New database:', currentDatabaseId);
         console.log('[ExperimentManager] 🧹 Clearing localStorage for fresh start...');
-        
+
         // Clear all experiment-related data
         const keysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
@@ -56,11 +56,11 @@ class ExperimentManager {
             keysToRemove.push(key);
           }
         }
-        
+
         keysToRemove.forEach(key => localStorage.removeItem(key));
         console.log('[ExperimentManager] ✅ Cleared', keysToRemove.length, 'localStorage items');
       }
-      
+
       // Update stored database ID
       localStorage.setItem(storageKey, currentDatabaseId);
     } catch (error) {
@@ -166,7 +166,7 @@ class ExperimentManager {
       sessionId: completedSessions + 1,
       permutationId,
       speedConfig: config,
-      completedSessions
+      completedSessions,
     };
   }
 
@@ -591,15 +591,15 @@ class ExperimentManager {
           totalDeaths: this.currentMetrics.summary.totalDeaths,
           successfulTurns: this.currentMetrics.summary.successfulTurns,
           totalTurns: this.currentMetrics.summary.totalTurns,
-          finalScore: finalScore,
+          finalScore,
         });
 
         // Mark session as completed with final score
         await this.supabaseManager.completeSession(this.currentMetrics.summary.gameTime, finalScore);
-        
+
         // Update score statistics for all user sessions
         await this.supabaseManager.updateScoreStatistics(this.userId);
-        
+
         console.log('[ExperimentManager] ✅ Session completed in Supabase');
       } catch (error) {
         console.error('[ExperimentManager] Failed to complete Supabase session:', error);
@@ -1109,7 +1109,7 @@ class ExperimentManager {
       if (this.metrics && this.metrics.length > 0) {
         const removedSession = this.metrics.pop();
         console.log('[ExperimentManager] ✅ Removed last session from localStorage metrics');
-        
+
         // Update localStorage
         try {
           const storageKey = `pacman-experiment-${this.userId}`;
@@ -1117,7 +1117,7 @@ class ExperimentManager {
             userId: this.userId,
             sessionOrder: this.sessionOrder,
             metrics: this.metrics,
-            lastUpdated: new Date().toISOString()
+            lastUpdated: new Date().toISOString(),
           };
           localStorage.setItem(storageKey, JSON.stringify(userData));
           console.log('[ExperimentManager] ✅ Updated localStorage after session deletion');
@@ -1128,17 +1128,17 @@ class ExperimentManager {
 
       const message = supabaseResult ? supabaseResult.message : 'Last session removed from local data';
       console.log('[ExperimentManager] 🎉 Last session deletion completed:', message);
-      
-      return { 
-        success: true, 
+
+      return {
+        success: true,
         message,
-        supabaseResult
+        supabaseResult,
       };
     } catch (error) {
       console.error('[ExperimentManager] ❌ Error during last session deletion:', error);
-      return { 
-        success: false, 
-        message: error.message 
+      return {
+        success: false,
+        message: error.message,
       };
     }
   }

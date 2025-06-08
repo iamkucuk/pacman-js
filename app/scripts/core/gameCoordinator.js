@@ -95,7 +95,7 @@ class GameCoordinator {
 
     // Main user ID flow event listeners
     this.setupUserIdFlow();
-    
+
     this.gameStartButton.addEventListener(
       'click',
       this.startButtonClick.bind(this),
@@ -114,7 +114,7 @@ class GameCoordinator {
     link.onload = this.preloadAssets.bind(this);
 
     head.appendChild(link);
-    
+
     // Initialize experiment system
     this.initializeExperiment();
   }
@@ -126,7 +126,7 @@ class GameCoordinator {
 
     if (confirmUserIdBtn && userIdInput) {
       confirmUserIdBtn.addEventListener('click', () => this.handleUserIdConfirmation());
-      
+
       userIdInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
           this.handleUserIdConfirmation();
@@ -144,13 +144,13 @@ class GameCoordinator {
       const autoResumeUserId = localStorage.getItem('autoResumeUserId');
       if (autoResumeUserId) {
         console.log('[GameCoordinator] Auto-resuming with user ID:', autoResumeUserId);
-        
+
         // Remove the flag so it doesn't auto-resume again
         localStorage.removeItem('autoResumeUserId');
-        
+
         // Fill in the user ID and trigger confirmation automatically
         userIdInput.value = autoResumeUserId;
-        
+
         // Trigger confirmation after a brief delay to ensure UI is ready
         setTimeout(() => {
           this.handleUserIdConfirmation();
@@ -216,7 +216,7 @@ class GameCoordinator {
       }
 
       await this.experimentManager.initializeUser(userId);
-      
+
       // Check if user has completed all sessions
       const completedSessions = this.experimentManager.getCompletedSessionsCount();
       if (completedSessions >= 9) {
@@ -227,14 +227,14 @@ class GameCoordinator {
 
       // Get next session info WITHOUT creating the session yet
       const sessionInfo = this.experimentManager.getNextSessionInfo();
-      
+
       // Update display elements
       this.updateSessionDisplay(sessionInfo);
-      
+
       // Hide user ID section and show session info
       userIdSection.style.display = 'none';
       sessionInfoSection.style.display = 'block';
-      
+
       // Show the PLAY button
       const gameStartButton = document.getElementById('game-start');
       if (gameStartButton) {
@@ -253,7 +253,6 @@ class GameCoordinator {
       // Don't dispatch experimentSessionStarted yet - wait until PLAY is clicked
 
       console.log('[GameCoordinator] User ID confirmed, ready for session:', sessionInfo.sessionId);
-
     } catch (error) {
       console.error('[GameCoordinator] Error confirming user ID:', error);
       userIdError.textContent = error.message;
@@ -281,7 +280,7 @@ class GameCoordinator {
   showExperimentCompleteMessage() {
     const userIdSection = document.getElementById('user-id-section');
     const sessionInfoSection = document.getElementById('session-info-section');
-    
+
     if (userIdSection) {
       userIdSection.innerHTML = `
         <h3 class='experiment-title'>🎉 Experiment Complete! 🎉</h3>
@@ -296,7 +295,7 @@ class GameCoordinator {
       // Bind new button events
       const exportBtn = document.getElementById('export-final-data');
       const newExpBtn = document.getElementById('start-new-experiment');
-      
+
       if (exportBtn) {
         exportBtn.addEventListener('click', () => {
           if (this.exportManager) {
@@ -322,13 +321,13 @@ class GameCoordinator {
     try {
       // Show confirmation dialog
       const confirmed = confirm(
-        '⚠️ Are you sure you want to reset the experiment?\n\n' +
-        'This will:\n' +
-        '• Delete ALL session data\n' +
-        '• Clear the user ID\n' +
-        '• Remove data from both local storage and cloud database\n' +
-        '• Start completely over\n\n' +
-        'This action cannot be undone!'
+        '⚠️ Are you sure you want to reset the experiment?\n\n'
+        + 'This will:\n'
+        + '• Delete ALL session data\n'
+        + '• Clear the user ID\n'
+        + '• Remove data from both local storage and cloud database\n'
+        + '• Start completely over\n\n'
+        + 'This action cannot be undone!',
       );
 
       if (!confirmed) {
@@ -350,10 +349,9 @@ class GameCoordinator {
       this.resetUIToInitialState();
 
       console.log('[GameCoordinator] ✅ Experiment reset completed successfully');
-
     } catch (error) {
       console.error('[GameCoordinator] ❌ Error during experiment reset:', error);
-      alert('Error resetting experiment: ' + error.message);
+      alert(`Error resetting experiment: ${error.message}`);
     }
   }
 
@@ -377,12 +375,12 @@ class GameCoordinator {
       // Hide the game UI and show main menu
       const gameUI = document.getElementById('game-ui');
       const mainMenu = document.getElementById('main-menu-container');
-      
+
       if (gameUI) {
         gameUI.style.display = 'none';
         console.log('[GameCoordinator] 🫥 Hidden game UI');
       }
-      
+
       if (mainMenu) {
         mainMenu.style.display = 'flex';
         console.log('[GameCoordinator] 👁️ Shown main menu');
@@ -468,20 +466,20 @@ class GameCoordinator {
     this.experimentUI = new ExperimentUI(this.experimentManager);
     this.speedController = new SpeedController();
     this.metricsCollector = new MetricsCollector(this.experimentManager);
-    
+
     // Initialize SpeedController immediately if entities already exist
     if (this.pacman && this.ghosts) {
       console.log('[GameCoordinator] 🚀 Entities already exist, initializing SpeedController immediately');
       this.speedController.initialize(this);
     }
-    
+
     // Set cross-references
     this.experimentManager.sessionManager = this.sessionManager;
     this.experimentManager.progressController = this.progressController;
     this.experimentManager.dataManager = this.dataManager;
     this.experimentManager.exportManager = this.exportManager;
     this.experimentManager.visualizationDashboard = this.visualizationDashboard;
-    
+
     this.sessionManager.initialize();
     this.progressController.initialize();
     this.dataManager.initialize();
@@ -499,9 +497,9 @@ class GameCoordinator {
       if (this.experimentUI && this.metricsCollector) {
         this.experimentUI.setMetricsCollector(this.metricsCollector);
       }
-      
+
       window.gameCoordinator = this;
-      
+
       // Expose debug functions globally
       window.debugSpeeds = () => this.speedController.debugCurrentSpeeds();
       window.testSpeeds = () => {
@@ -509,10 +507,10 @@ class GameCoordinator {
         this.speedController.applySpeedConfiguration({
           pacmanMultiplier: 0.3,
           ghostMultiplier: 3.0,
-          config: { pacman: 'slow', ghost: 'fast' }
+          config: { pacman: 'slow', ghost: 'fast' },
         });
       };
-      
+
       console.log('[GameCoordinator] 📡 Experiment session started, SpeedController will initialize when game entities are ready');
     });
   }
@@ -567,7 +565,7 @@ class GameCoordinator {
         console.log('[GameCoordinator] Session started:', session.sessionId);
       } catch (error) {
         console.error('[GameCoordinator] Failed to start session:', error);
-        alert('Failed to start session: ' + error.message);
+        alert(`Failed to start session: ${error.message}`);
         return;
       }
     }
@@ -577,8 +575,8 @@ class GameCoordinator {
       detail: {
         sessionId: this.experimentManager.currentSession ? this.experimentManager.currentSession.sessionId : null,
         speedConfig: this.experimentManager.currentSession ? this.experimentManager.currentSession.speedConfig : null,
-        completedSessions: this.experimentManager.getCompletedSessionsCount() - 1
-      }
+        completedSessions: this.experimentManager.getCompletedSessionsCount() - 1,
+      },
     }));
 
     // Hide session management buttons during gameplay
@@ -602,14 +600,14 @@ class GameCoordinator {
       this.init();
     }
     this.startGameplay(true);
-    
+
     // Dispatch game started event for experiment tracking
     window.dispatchEvent(new CustomEvent('gameStarted', {
       detail: {
         sessionId: (this.experimentManager.currentSession && this.experimentManager.currentSession.sessionId) ? this.experimentManager.currentSession.sessionId : null,
         speedConfig: (this.experimentManager.currentSession && this.experimentManager.currentSession.speedConfig) ? this.experimentManager.currentSession.speedConfig : null,
-        timestamp: Date.now()
-      }
+        timestamp: Date.now(),
+      },
     }));
   }
 
@@ -1280,7 +1278,7 @@ class GameCoordinator {
         this.activeTimers.forEach((timer) => {
           timer.resume();
         });
-        
+
         // Resume experiment timer
         if (this.experimentManager && this.experimentManager.isExperimentActive) {
           this.experimentManager.resumeGameplayTimer();
@@ -1294,7 +1292,7 @@ class GameCoordinator {
         this.activeTimers.forEach((timer) => {
           timer.pause();
         });
-        
+
         // Pause experiment timer
         if (this.experimentManager && this.experimentManager.isExperimentActive) {
           this.experimentManager.pauseGameplayTimer();
@@ -1539,8 +1537,8 @@ class GameCoordinator {
         userId: this.experimentManager.userId,
         completedSessions: 9,
         totalSessions: 9,
-        timestamp: Date.now()
-      }
+        timestamp: Date.now(),
+      },
     }));
 
     const completionOverlay = document.createElement('div');
@@ -1633,37 +1631,36 @@ class GameCoordinator {
   async continueToNextSession() {
     try {
       const session = await this.experimentManager.startSession();
-      
+
       // Update the session display
       this.updateSessionDisplay(session);
-      
+
       // Show the main menu with session info already populated
       // Don't call reset() here - it should only be called when game starts
       this.mainMenu.style.opacity = 1;
       this.gameStartButton.disabled = false;
       this.mainMenu.style.visibility = 'visible';
-      
+
       // Make sure session info is showing and PLAY button is visible
       const userIdSection = document.getElementById('user-id-section');
       const sessionInfoSection = document.getElementById('session-info-section');
       const gameStartButton = document.getElementById('game-start');
-      
+
       if (userIdSection) userIdSection.style.display = 'none';
       if (sessionInfoSection) sessionInfoSection.style.display = 'block';
       if (gameStartButton) gameStartButton.style.display = 'block';
-      
+
       // Dispatch session started event
       window.dispatchEvent(new CustomEvent('experimentSessionStarted', {
         detail: {
           sessionId: session.sessionId,
           speedConfig: session.speedConfig,
-          completedSessions: this.experimentManager.getCompletedSessionsCount() - 1
-        }
+          completedSessions: this.experimentManager.getCompletedSessionsCount() - 1,
+        },
       }));
-      
     } catch (error) {
       console.error('[GameCoordinator] Failed to continue to next session:', error);
-      alert('Error starting next session: ' + error.message);
+      alert(`Error starting next session: ${error.message}`);
       this.returnToMainMenuWithNewSession();
     }
   }
@@ -1675,12 +1672,12 @@ class GameCoordinator {
     this.mainMenu.style.opacity = 1;
     this.gameStartButton.disabled = false;
     this.mainMenu.style.visibility = 'visible';
-    
+
     // Reset to user ID input for potential different user
     const userIdSection = document.getElementById('user-id-section');
     const sessionInfoSection = document.getElementById('session-info-section');
     const userIdInput = document.getElementById('main-user-id-input');
-    
+
     if (userIdSection) userIdSection.style.display = 'block';
     if (sessionInfoSection) sessionInfoSection.style.display = 'none';
     if (userIdInput) {
@@ -1837,12 +1834,12 @@ class GameCoordinator {
                       left: this.scaledTileSize * 8,
                       top: this.scaledTileSize * 16.5,
                     },
-                    'ready',  // Reusing "ready" text as "level complete"
+                    'ready', // Reusing "ready" text as "level complete"
                     3000,
                     this.scaledTileSize * 12,
                     this.scaledTileSize * 2,
                   );
-                  
+
                   new Timer(() => {
                     // For research purposes, end session when level is completed
                     this.levelCompleteEndSession();
@@ -1884,21 +1881,21 @@ class GameCoordinator {
           sessionId: (this.experimentManager.currentSession && this.experimentManager.currentSession.sessionId) ? this.experimentManager.currentSession.sessionId : null,
           finalScore: this.points,
           gameTime: Date.now() - this.gameStartTime,
-          reason: reason, // 'level_complete' or 'game_over'
-          timestamp: Date.now()
-        }
+          reason, // 'level_complete' or 'game_over'
+          timestamp: Date.now(),
+        },
       }));
 
       // End the session in experiment manager with final score
       this.experimentManager.endSession(this.points);
-      
+
       // Dispatch session ended event for other components
       window.dispatchEvent(new CustomEvent('experimentSessionEnded', {
         detail: {
           sessionId: (this.experimentManager.currentSession && this.experimentManager.currentSession.sessionId) ? this.experimentManager.currentSession.sessionId : 'unknown',
           completedSessions: this.experimentManager.getCompletedSessionsCount(),
-          reason: reason
-        }
+          reason,
+        },
       }));
     }
   }
@@ -1996,7 +1993,7 @@ class GameCoordinator {
     this.allowPacmanMovement = false;
     this.pacman.display = false;
     this.pacman.moving = false;
-    
+
     // Pause experiment timer during ghost eating pause
     if (this.experimentManager && this.experimentManager.isExperimentActive) {
       this.experimentManager.pauseGameplayTimer();
@@ -2020,7 +2017,7 @@ class GameCoordinator {
       this.allowPacmanMovement = true;
       this.pacman.display = true;
       this.pacman.moving = true;
-      
+
       // Resume experiment timer after ghost eating pause
       if (this.experimentManager && this.experimentManager.isExperimentActive) {
         this.experimentManager.resumeGameplayTimer();

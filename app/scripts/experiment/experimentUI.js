@@ -160,7 +160,7 @@ class ExperimentUI {
     try {
       // eslint-disable-next-line no-console
       console.log('[ExperimentUI] End session button clicked - saving session and reloading');
-      
+
       // Store the current user ID so we can auto-continue after reload
       const currentUserId = window.gameCoordinator && window.gameCoordinator.experimentManager ? window.gameCoordinator.experimentManager.userId : null;
       if (currentUserId) {
@@ -168,12 +168,12 @@ class ExperimentUI {
         // eslint-disable-next-line no-console
         console.log('[ExperimentUI] Stored user ID for auto-resume:', currentUserId);
       }
-      
+
       // End the current session properly and wait for it to complete
       if (window.gameCoordinator && window.gameCoordinator.experimentManager) {
         // eslint-disable-next-line no-console
         console.log('[ExperimentUI] Ending experiment session and waiting for save...');
-        
+
         // Dispatch game ended event first
         window.dispatchEvent(new CustomEvent('gameEnded', {
           detail: {
@@ -181,8 +181,8 @@ class ExperimentUI {
             finalScore: window.gameCoordinator.points || 0,
             gameTime: Date.now() - (window.gameCoordinator.gameStartTime || Date.now()),
             reason: 'user_terminated',
-            timestamp: Date.now()
-          }
+            timestamp: Date.now(),
+          },
         }));
 
         // Actually end the session with final score and wait for all async operations
@@ -190,26 +190,25 @@ class ExperimentUI {
         await window.gameCoordinator.experimentManager.endSession(finalScore);
         // eslint-disable-next-line no-console
         console.log('[ExperimentUI] ✅ Session saved successfully');
-        
+
         // Dispatch session ended event
         window.dispatchEvent(new CustomEvent('experimentSessionEnded', {
           detail: {
             sessionId: (window.gameCoordinator.experimentManager.currentSession && window.gameCoordinator.experimentManager.currentSession.sessionId) ? window.gameCoordinator.experimentManager.currentSession.sessionId : 'unknown',
             completedSessions: window.gameCoordinator.experimentManager.getCompletedSessionsCount(),
-            reason: 'user_terminated'
-          }
+            reason: 'user_terminated',
+          },
         }));
       }
-      
+
       // Now reload after session is properly saved
       // eslint-disable-next-line no-console
       console.log('[ExperimentUI] Reloading page for clean state');
       window.location.reload();
-      
     } catch (error) {
       // eslint-disable-next-line no-console
       console.error('Error ending session:', error);
-      
+
       // Fallback: just reload (data may not be saved but better than broken state)
       window.location.reload();
     }
@@ -248,13 +247,13 @@ class ExperimentUI {
     try {
       // Show comprehensive confirmation dialog
       const confirmed = confirm(
-        '⚠️ Are you sure you want to reset the experiment?\n\n' +
-        'This will:\n' +
-        '• Delete ALL session data\n' +
-        '• Clear the user ID\n' +
-        '• Remove data from both local storage and cloud database\n' +
-        '• Reload the page for a fresh start\n\n' +
-        'This action cannot be undone!'
+        '⚠️ Are you sure you want to reset the experiment?\n\n'
+        + 'This will:\n'
+        + '• Delete ALL session data\n'
+        + '• Clear the user ID\n'
+        + '• Remove data from both local storage and cloud database\n'
+        + '• Reload the page for a fresh start\n\n'
+        + 'This action cannot be undone!',
       );
 
       if (!confirmed) {
@@ -272,10 +271,9 @@ class ExperimentUI {
 
       // Simple and reliable: reload the page for a completely fresh start
       window.location.reload();
-
     } catch (error) {
       console.error('[ExperimentUI] ❌ Error during experiment reset:', error);
-      
+
       // Even if data deletion fails, reload the page for a fresh start
       window.location.reload();
     }
@@ -285,13 +283,13 @@ class ExperimentUI {
     try {
       // Show confirmation dialog
       const confirmed = confirm(
-        '⚠️ Delete the last completed session?\n\n' +
-        'This will:\n' +
-        '• Remove the most recent session from Supabase database\n' +
-        '• Remove session data from local storage\n' +
-        '• Reload the page for a fresh start\n' +
-        '• Allow you to replay that session configuration\n\n' +
-        'This action cannot be undone!'
+        '⚠️ Delete the last completed session?\n\n'
+        + 'This will:\n'
+        + '• Remove the most recent session from Supabase database\n'
+        + '• Remove session data from local storage\n'
+        + '• Reload the page for a fresh start\n'
+        + '• Allow you to replay that session configuration\n\n'
+        + 'This action cannot be undone!',
       );
 
       if (!confirmed) {
@@ -309,10 +307,9 @@ class ExperimentUI {
 
       // Simple and reliable: reload the page for a completely fresh start
       window.location.reload();
-
     } catch (error) {
       console.error('[ExperimentUI] ❌ Error during last session deletion:', error);
-      
+
       // Even if data deletion fails, reload the page for a fresh start
       window.location.reload();
     }
@@ -433,7 +430,7 @@ class ExperimentUI {
       console.log('- sessionInfo.sessionId:', sessionInfo.sessionId);
       console.log('- completedSessions from info:', sessionInfo.completedSessions);
       console.log('- Direct completedSessions call:', this.experimentManager.getCompletedSessionsCount());
-      
+
       sessionInfoDiv.innerHTML = `
         <strong>User:</strong> ${this.experimentManager.userId}<br>
         <strong>Session:</strong> ${sessionInfo.sessionId}/9
@@ -542,7 +539,7 @@ class ExperimentUI {
 
     const sessionInfo = this.experimentManager.getCurrentSessionInfo();
     const sessionId = sessionInfo ? sessionInfo.sessionId : '?';
-    
+
     // Debug logging for live metrics display
     console.log('[ExperimentUI] Live metrics debug:');
     console.log('- sessionInfo from getCurrentSessionInfo:', sessionInfo);

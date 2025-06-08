@@ -7,7 +7,7 @@ class ExportManager {
     this.anonymization = {
       enabled: false,
       hashSalt: null,
-      fieldMasking: {}
+      fieldMasking: {},
     };
     this.isInitialized = false;
     this.DEBUG = true;
@@ -15,11 +15,11 @@ class ExportManager {
 
   initialize() {
     if (this.isInitialized) return;
-    
+
     this.setupAnonymization();
     this.bindEvents();
     this.isInitialized = true;
-    
+
     if (this.DEBUG) {
       console.log('[ExportManager] Initialized with formats:', this.exportFormats);
     }
@@ -41,13 +41,13 @@ class ExportManager {
       userId: { enabled: false, method: 'hash' },
       deviceInfo: { enabled: false, method: 'remove' },
       browserInfo: { enabled: false, method: 'generalize' },
-      timestamps: { enabled: false, method: 'relative' }
+      timestamps: { enabled: false, method: 'relative' },
     };
   }
 
   generateSalt() {
-    return Math.random().toString(36).substring(2, 15) + 
-           Math.random().toString(36).substring(2, 15);
+    return Math.random().toString(36).substring(2, 15)
+           + Math.random().toString(36).substring(2, 15);
   }
 
   exportData(format = 'json', options = {}) {
@@ -59,12 +59,12 @@ class ExportManager {
         includeDeviceInfo: true,
         anonymize: false,
         compression: false,
-        ...options
+        ...options,
       };
 
       const rawData = this.gatherExportData(exportOptions);
       const processedData = this.processDataForExport(rawData, exportOptions);
-      
+
       let exportContent;
       let filename;
       let mimeType;
@@ -72,39 +72,39 @@ class ExportManager {
       switch (format.toLowerCase()) {
         case 'json':
           { const result = this.exportAsJSON(processedData, exportOptions);
-          exportContent = result.content;
-          filename = result.filename;
-          mimeType = result.mimeType; }
+            exportContent = result.content;
+            filename = result.filename;
+            mimeType = result.mimeType; }
           break;
         case 'csv':
           { const result = this.exportAsCSV(processedData, exportOptions);
-          exportContent = result.content;
-          filename = result.filename;
-          mimeType = result.mimeType; }
+            exportContent = result.content;
+            filename = result.filename;
+            mimeType = result.mimeType; }
           break;
         case 'xlsx':
           { const result = this.exportAsExcel(processedData, exportOptions);
-          exportContent = result.content;
-          filename = result.filename;
-          mimeType = result.mimeType; }
+            exportContent = result.content;
+            filename = result.filename;
+            mimeType = result.mimeType; }
           break;
         case 'spss':
           { const result = this.exportAsSPSS(processedData, exportOptions);
-          exportContent = result.content;
-          filename = result.filename;
-          mimeType = result.mimeType; }
+            exportContent = result.content;
+            filename = result.filename;
+            mimeType = result.mimeType; }
           break;
         case 'r':
           { const result = this.exportAsR(processedData, exportOptions);
-          exportContent = result.content;
-          filename = result.filename;
-          mimeType = result.mimeType; }
+            exportContent = result.content;
+            filename = result.filename;
+            mimeType = result.mimeType; }
           break;
         case 'python':
           { const result = this.exportAsPython(processedData, exportOptions);
-          exportContent = result.content;
-          filename = result.filename;
-          mimeType = result.mimeType; }
+            exportContent = result.content;
+            filename = result.filename;
+            mimeType = result.mimeType; }
           break;
         default:
           throw new Error(`Unsupported export format: ${format}`);
@@ -112,19 +112,18 @@ class ExportManager {
 
       this.downloadFile(filename, exportContent, mimeType);
       this.logExport(format, exportOptions, exportContent.length);
-      
+
       return {
         success: true,
         format,
         filename,
-        size: exportContent.length
+        size: exportContent.length,
       };
-
     } catch (error) {
       console.error('[ExportManager] Export failed:', error);
       return {
         success: false,
-        error: error.message
+        error: error.message,
       };
     }
   }
@@ -137,15 +136,15 @@ class ExportManager {
         sessionOrder: this.experimentManager.sessionOrder,
         speedConfigurations: this.experimentManager.PERMUTATIONS,
         completedSessions: this.experimentManager.getCompletedSessionsCount(),
-        totalSessions: 9
+        totalSessions: 9,
       },
       sessions: this.experimentManager.metrics,
       analytics: this.sessionManager.getSessionAnalytics(),
       systemInfo: {
         deviceInfo: options.includeDeviceInfo ? this.getDeviceInfo() : null,
         browserInfo: options.includeDeviceInfo ? this.getBrowserInfo() : null,
-        exportTimestamp: new Date().toISOString()
-      }
+        exportTimestamp: new Date().toISOString(),
+      },
     };
 
     if (options.includeRawEvents) {
@@ -184,26 +183,26 @@ class ExportManager {
         sessions: 'Array of session objects with metrics and events',
         events: 'Individual game events with timestamps and context',
         analytics: 'Aggregated statistics and performance metrics',
-        configurations: 'Speed permutations used in the experiment'
+        configurations: 'Speed permutations used in the experiment',
       },
       variables: {
         independent: ['pacman_speed', 'ghost_speed'],
-        dependent: ['ghosts_eaten', 'pellets_eaten', 'deaths', 'successful_turns', 'turn_accuracy']
-      }
+        dependent: ['ghosts_eaten', 'pellets_eaten', 'deaths', 'successful_turns', 'turn_accuracy'],
+      },
     };
   }
 
   extractAllEvents() {
     const allEvents = [];
-    
-    this.experimentManager.metrics.forEach(session => {
+
+    this.experimentManager.metrics.forEach((session) => {
       if (session.events) {
-        session.events.forEach(event => {
+        session.events.forEach((event) => {
           allEvents.push({
             ...event,
             sessionId: session.sessionId,
             speedConfig: session.speedConfig,
-            permutationId: session.permutationId
+            permutationId: session.permutationId,
           });
         });
       }
@@ -219,12 +218,12 @@ class ExportManager {
     const summary = {
       sessions: {
         total: sessions.length,
-        completed: sessions.filter(s => s.summary).length
+        completed: sessions.filter(s => s.summary).length,
       },
       performance: this.calculatePerformanceStats(sessions),
       speedAnalysis: this.analyzeSpeedEffects(sessions),
       turnAnalysis: this.analyzeTurnPerformance(sessions),
-      timeAnalysis: this.analyzeTimeMetrics(sessions)
+      timeAnalysis: this.analyzeTimeMetrics(sessions),
     };
 
     return summary;
@@ -234,7 +233,7 @@ class ExportManager {
     const metrics = ['totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths', 'successfulTurns', 'totalTurns'];
     const stats = {};
 
-    metrics.forEach(metric => {
+    metrics.forEach((metric) => {
       const values = sessions
         .filter(s => s.summary && s.summary[metric] !== undefined)
         .map(s => s.summary[metric]);
@@ -246,7 +245,7 @@ class ExportManager {
           std: this.calculateStandardDeviation(values),
           min: Math.min(...values),
           max: Math.max(...values),
-          count: values.length
+          count: values.length,
         };
       }
     });
@@ -263,7 +262,7 @@ class ExportManager {
         std: this.calculateStandardDeviation(accuracyValues),
         min: Math.min(...accuracyValues),
         max: Math.max(...accuracyValues),
-        count: accuracyValues.length
+        count: accuracyValues.length,
       };
     }
 
@@ -273,10 +272,10 @@ class ExportManager {
   analyzeSpeedEffects(sessions) {
     const speedGroups = {
       pacman: { slow: [], normal: [], fast: [] },
-      ghost: { slow: [], normal: [], fast: [] }
+      ghost: { slow: [], normal: [], fast: [] },
     };
 
-    sessions.forEach(session => {
+    sessions.forEach((session) => {
       if (session.speedConfig && session.summary) {
         speedGroups.pacman[session.speedConfig.pacman].push(session.summary);
         speedGroups.ghost[session.speedConfig.ghost].push(session.summary);
@@ -285,10 +284,10 @@ class ExportManager {
 
     const analysis = {};
 
-    ['pacman', 'ghost'].forEach(entityType => {
+    ['pacman', 'ghost'].forEach((entityType) => {
       analysis[entityType] = {};
-      
-      ['slow', 'normal', 'fast'].forEach(speed => {
+
+      ['slow', 'normal', 'fast'].forEach((speed) => {
         const group = speedGroups[entityType][speed];
         if (group.length > 0) {
           analysis[entityType][speed] = {
@@ -296,9 +295,7 @@ class ExportManager {
             avgGhostsEaten: this.calculateMean(group.map(s => s.totalGhostsEaten || 0)),
             avgPelletsEaten: this.calculateMean(group.map(s => s.totalPelletsEaten || 0)),
             avgDeaths: this.calculateMean(group.map(s => s.totalDeaths || 0)),
-            avgTurnAccuracy: this.calculateMean(group.map(s => 
-              s.totalTurns > 0 ? s.successfulTurns / s.totalTurns : 0
-            ))
+            avgTurnAccuracy: this.calculateMean(group.map(s => (s.totalTurns > 0 ? s.successfulTurns / s.totalTurns : 0))),
           };
         }
       });
@@ -310,7 +307,7 @@ class ExportManager {
   analyzeTurnPerformance(sessions) {
     const allEvents = this.extractAllEvents();
     const turnEvents = allEvents.filter(e => e.type === 'turnComplete');
-    
+
     if (turnEvents.length === 0) return null;
 
     const successfulTurns = turnEvents.filter(e => e.success);
@@ -323,8 +320,8 @@ class ExportManager {
       successRate: successfulTurns.length / turnEvents.length,
       avgDuration: {
         successful: this.calculateMean(successfulTurns.map(e => e.duration || 0)),
-        failed: this.calculateMean(failedTurns.map(e => e.duration || 0))
-      }
+        failed: this.calculateMean(failedTurns.map(e => e.duration || 0)),
+      },
     };
   }
 
@@ -340,7 +337,7 @@ class ExportManager {
       avgSessionDuration: this.calculateMean(gameTimes),
       medianSessionDuration: this.calculateMedian(gameTimes),
       shortestSession: Math.min(...gameTimes),
-      longestSession: Math.max(...gameTimes)
+      longestSession: Math.max(...gameTimes),
     };
   }
 
@@ -348,25 +345,25 @@ class ExportManager {
     const content = JSON.stringify(data, null, options.minify ? 0 : 2);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const suffix = options.anonymize ? '_anonymized' : '';
-    
+
     return {
       content,
       filename: `pacman_experiment_${this.experimentManager.userId}${suffix}_${timestamp}.json`,
-      mimeType: 'application/json'
+      mimeType: 'application/json',
     };
   }
 
   exportAsCSV(data, options) {
     const csvSections = [];
-    
+
     // Session summary CSV
     if (data.sessions && data.sessions.length > 0) {
       const sessionHeaders = [
         'sessionId', 'userId', 'permutationId', 'pacmanSpeed', 'ghostSpeed',
-        'totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths', 
-        'successfulTurns', 'totalTurns', 'turnAccuracy', 'gameTime'
+        'totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths',
+        'successfulTurns', 'totalTurns', 'turnAccuracy', 'gameTime',
       ];
-      
+
       const sessionRows = data.sessions.map(session => [
         session.sessionId,
         session.userId,
@@ -379,7 +376,7 @@ class ExportManager {
         (session.summary && session.summary.successfulTurns) ? session.summary.successfulTurns : 0,
         (session.summary && session.summary.totalTurns) ? session.summary.totalTurns : 0,
         (session.summary && session.summary.totalTurns && session.summary.totalTurns > 0) ? session.summary.successfulTurns / session.summary.totalTurns : 0,
-        (session.summary && session.summary.gameTime) ? session.summary.gameTime : 0
+        (session.summary && session.summary.gameTime) ? session.summary.gameTime : 0,
       ]);
 
       csvSections.push('# Session Summary');
@@ -391,16 +388,16 @@ class ExportManager {
     // Events CSV
     if (data.rawEvents && data.rawEvents.length > 0) {
       const eventHeaders = [
-        'sessionId', 'eventType', 'timestamp', 'time', 'pacmanSpeed', 'ghostSpeed'
+        'sessionId', 'eventType', 'timestamp', 'time', 'pacmanSpeed', 'ghostSpeed',
       ];
-      
+
       const eventRows = data.rawEvents.map(event => [
         event.sessionId,
         event.type,
         event.timestamp,
         event.time,
         (event.speedConfig && event.speedConfig.pacman) ? event.speedConfig.pacman : '',
-        (event.speedConfig && event.speedConfig.ghost) ? event.speedConfig.ghost : ''
+        (event.speedConfig && event.speedConfig.ghost) ? event.speedConfig.ghost : '',
       ]);
 
       csvSections.push('# Raw Events');
@@ -411,11 +408,11 @@ class ExportManager {
     const content = csvSections.join('\n');
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const suffix = options.anonymize ? '_anonymized' : '';
-    
+
     return {
       content,
       filename: `pacman_experiment_${this.experimentManager.userId}${suffix}_${timestamp}.csv`,
-      mimeType: 'text/csv'
+      mimeType: 'text/csv',
     };
   }
 
@@ -424,11 +421,11 @@ class ExportManager {
     const content = this.generateExcelCompatibleFormat(data);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const suffix = options.anonymize ? '_anonymized' : '';
-    
+
     return {
       content,
       filename: `pacman_experiment_${this.experimentManager.userId}${suffix}_${timestamp}.xlsx.csv`,
-      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     };
   }
 
@@ -436,11 +433,11 @@ class ExportManager {
     const spssScript = this.generateSPSSScript(data);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const suffix = options.anonymize ? '_anonymized' : '';
-    
+
     return {
       content: spssScript,
       filename: `pacman_experiment_${this.experimentManager.userId}${suffix}_${timestamp}.sps`,
-      mimeType: 'text/plain'
+      mimeType: 'text/plain',
     };
   }
 
@@ -448,11 +445,11 @@ class ExportManager {
     const rScript = this.generateRScript(data);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const suffix = options.anonymize ? '_anonymized' : '';
-    
+
     return {
       content: rScript,
       filename: `pacman_experiment_${this.experimentManager.userId}${suffix}_${timestamp}.R`,
-      mimeType: 'text/plain'
+      mimeType: 'text/plain',
     };
   }
 
@@ -460,11 +457,11 @@ class ExportManager {
     const pythonScript = this.generatePythonScript(data);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const suffix = options.anonymize ? '_anonymized' : '';
-    
+
     return {
       content: pythonScript,
       filename: `pacman_experiment_${this.experimentManager.userId}${suffix}_${timestamp}.py`,
-      mimeType: 'text/plain'
+      mimeType: 'text/plain',
     };
   }
 
@@ -743,11 +740,11 @@ print("Plots saved to pacman_analysis_plots.png")`;
 
   anonymizeData(data) {
     const anonymized = JSON.parse(JSON.stringify(data));
-    
+
     if (this.anonymization.fieldMasking.userId.enabled) {
       anonymized.experiment.userId = this.hashValue(anonymized.experiment.userId);
       if (anonymized.sessions) {
-        anonymized.sessions.forEach(session => {
+        anonymized.sessions.forEach((session) => {
           session.userId = this.hashValue(session.userId);
         });
       }
@@ -772,7 +769,7 @@ print("Plots saved to pacman_analysis_plots.png")`;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
       hash = ((hash << 5) - hash) + char;
-      hash = hash & hash;
+      hash &= hash;
     }
     return `user_${Math.abs(hash).toString(36)}`;
   }
@@ -781,7 +778,7 @@ print("Plots saved to pacman_analysis_plots.png")`;
     // Convert absolute timestamps to relative (first event = 0)
     if (data.rawEvents && data.rawEvents.length > 0) {
       const baseTime = data.rawEvents[0].timestamp;
-      data.rawEvents.forEach(event => {
+      data.rawEvents.forEach((event) => {
         event.relativeTimestamp = event.timestamp - baseTime;
         delete event.timestamp;
       });
@@ -791,12 +788,12 @@ print("Plots saved to pacman_analysis_plots.png")`;
   compressData(data) {
     // Simple data compression by removing unnecessary fields
     const compressed = JSON.parse(JSON.stringify(data));
-    
+
     // Remove verbose debug information
     if (compressed.sessions) {
-      compressed.sessions.forEach(session => {
+      compressed.sessions.forEach((session) => {
         if (session.events) {
-          session.events.forEach(event => {
+          session.events.forEach((event) => {
             delete event.pacmanPosition;
             delete event.pacmanGridPosition;
           });
@@ -813,7 +810,7 @@ print("Plots saved to pacman_analysis_plots.png")`;
       platform: navigator.platform,
       language: navigator.language,
       screenResolution: `${screen.width}x${screen.height}`,
-      viewport: `${window.innerWidth}x${window.innerHeight}`
+      viewport: `${window.innerWidth}x${window.innerHeight}`,
     };
   }
 
@@ -821,7 +818,7 @@ print("Plots saved to pacman_analysis_plots.png")`;
     return {
       url: window.location.href,
       referrer: document.referrer,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     };
   }
 
@@ -839,11 +836,11 @@ print("Plots saved to pacman_analysis_plots.png")`;
 
   logExport(format, options, size) {
     if (this.DEBUG) {
-      console.log(`[ExportManager] Export completed:`, {
+      console.log('[ExportManager] Export completed:', {
         format,
         size: `${Math.round(size / 1024)}KB`,
         options,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       });
     }
   }
@@ -853,7 +850,7 @@ print("Plots saved to pacman_analysis_plots.png")`;
       exportCapabilities: this.exportFormats,
       anonymizationEnabled: this.anonymization.enabled,
       dataIntegrity: this.validateDataIntegrity(),
-      completeness: this.assessDataCompleteness()
+      completeness: this.assessDataCompleteness(),
     };
   }
 
@@ -861,7 +858,7 @@ print("Plots saved to pacman_analysis_plots.png")`;
     const sessions = this.experimentManager.metrics;
     const issues = [];
 
-    sessions.forEach(session => {
+    sessions.forEach((session) => {
       if (!session.userId) issues.push(`Session ${session.sessionId} missing userId`);
       if (!session.speedConfig) issues.push(`Session ${session.sessionId} missing speedConfig`);
       if (!session.summary) issues.push(`Session ${session.sessionId} missing summary`);
@@ -869,26 +866,26 @@ print("Plots saved to pacman_analysis_plots.png")`;
 
     return {
       valid: issues.length === 0,
-      issues
+      issues,
     };
   }
 
   assessDataCompleteness() {
     const totalSessions = 9;
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
-    
+
     return {
       sessionCompleteness: completedSessions / totalSessions,
       hasAllSpeedConfigurations: this.checkAllSpeedConfigurations(),
-      dataQualityScore: this.calculateDataQualityScore()
+      dataQualityScore: this.calculateDataQualityScore(),
     };
   }
 
   checkAllSpeedConfigurations() {
     const sessions = this.experimentManager.metrics;
     const configCombinations = new Set();
-    
-    sessions.forEach(session => {
+
+    sessions.forEach((session) => {
       if (session.speedConfig) {
         configCombinations.add(`${session.speedConfig.pacman}-${session.speedConfig.ghost}`);
       }
@@ -902,9 +899,9 @@ print("Plots saved to pacman_analysis_plots.png")`;
     let score = 0;
     let maxScore = 0;
 
-    sessions.forEach(session => {
+    sessions.forEach((session) => {
       maxScore += 5; // Max points per session
-      
+
       if (session.summary) score += 1;
       if (session.events && session.events.length > 0) score += 1;
       if (session.speedConfig) score += 1;
@@ -919,9 +916,9 @@ print("Plots saved to pacman_analysis_plots.png")`;
     this.anonymization.enabled = true;
     this.anonymization.fieldMasking = {
       ...this.anonymization.fieldMasking,
-      ...fieldConfig
+      ...fieldConfig,
     };
-    
+
     if (this.DEBUG) {
       console.log('[ExportManager] Anonymization enabled:', this.anonymization.fieldMasking);
     }
@@ -929,7 +926,7 @@ print("Plots saved to pacman_analysis_plots.png")`;
 
   disableAnonymization() {
     this.anonymization.enabled = false;
-    
+
     if (this.DEBUG) {
       console.log('[ExportManager] Anonymization disabled');
     }
@@ -947,7 +944,7 @@ print("Plots saved to pacman_analysis_plots.png")`;
       totalSessions: this.experimentManager.getCompletedSessionsCount(),
       dataQuality: this.assessDataCompleteness(),
       analytics: this.generateStatisticalSummary(),
-      exportRecommendations: this.getExportRecommendations()
+      exportRecommendations: this.getExportRecommendations(),
     };
 
     if (this.DEBUG) {
@@ -962,7 +959,7 @@ print("Plots saved to pacman_analysis_plots.png")`;
       recommendedFormats: ['json', 'csv', 'r'],
       statisticalAnalysis: 'Use R or Python scripts for comprehensive analysis',
       dataSharing: 'Enable anonymization for public data sharing',
-      archival: 'Export to JSON for long-term data preservation'
+      archival: 'Export to JSON for long-term data preservation',
     };
   }
 
@@ -972,7 +969,7 @@ print("Plots saved to pacman_analysis_plots.png")`;
       supportedFormats: this.exportFormats,
       anonymizationConfig: this.anonymization,
       dataIntegrity: this.validateDataIntegrity(),
-      completeness: this.assessDataCompleteness()
+      completeness: this.assessDataCompleteness(),
     };
   }
 }

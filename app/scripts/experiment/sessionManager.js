@@ -13,12 +13,12 @@ class SessionManager {
 
   initialize() {
     if (this.isInitialized) return;
-    
+
     this.bindEvents();
     this.setupActivityTracking();
     this.loadSessionHistory();
     this.isInitialized = true;
-    
+
     if (this.DEBUG) {
       console.log('[SessionManager] Initialized');
     }
@@ -44,8 +44,8 @@ class SessionManager {
 
   setupActivityTracking() {
     const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
-    
-    events.forEach(event => {
+
+    events.forEach((event) => {
       document.addEventListener(event, () => {
         this.updateLastActivity();
       }, true);
@@ -59,22 +59,22 @@ class SessionManager {
   generateAdvancedRandomization(userId) {
     const seed = this.createSeedFromUserId(userId);
     const rng = this.createSeededRandom(seed);
-    
+
     // Fisher-Yates shuffle with seeded random
     const permutations = [...Array(9).keys()];
     for (let i = permutations.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
       [permutations[i], permutations[j]] = [permutations[j], permutations[i]];
     }
-    
+
     // Ensure balanced distribution across speed types
     const speedDistribution = this.validateSpeedDistribution(permutations);
-    
+
     if (this.DEBUG) {
       console.log('[SessionManager] Generated randomization for', userId, permutations);
       console.log('[SessionManager] Speed distribution:', speedDistribution);
     }
-    
+
     return permutations;
   }
 
@@ -83,14 +83,14 @@ class SessionManager {
     for (let i = 0; i < userId.length; i++) {
       const char = userId.charCodeAt(i);
       hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
+      hash &= hash; // Convert to 32-bit integer
     }
     return Math.abs(hash);
   }
 
   createSeededRandom(seed) {
     let currentSeed = seed;
-    return function() {
+    return function () {
       currentSeed = (currentSeed * 9301 + 49297) % 233280;
       return currentSeed / 233280;
     };
@@ -100,13 +100,13 @@ class SessionManager {
     const speeds = ['slow', 'normal', 'fast'];
     const pacmanCounts = { slow: 0, normal: 0, fast: 0 };
     const ghostCounts = { slow: 0, normal: 0, fast: 0 };
-    
-    permutations.forEach(permId => {
+
+    permutations.forEach((permId) => {
       const config = this.experimentManager.PERMUTATIONS[permId];
       pacmanCounts[config.pacman]++;
       ghostCounts[config.ghost]++;
     });
-    
+
     return { pacman: pacmanCounts, ghost: ghostCounts };
   }
 
@@ -117,18 +117,18 @@ class SessionManager {
       events: [],
       milestones: [],
       deviceInfo: this.captureDeviceInfo(),
-      browserInfo: this.captureBrowserInfo()
+      browserInfo: this.captureBrowserInfo(),
     };
-    
+
     this.sessionStartTime = Date.now();
     this.updateLastActivity();
     this.saveSessionState();
-    
+
     this.logMilestone('session_started', {
       sessionId: sessionInfo.sessionId,
-      speedConfig: sessionInfo.speedConfig
+      speedConfig: sessionInfo.speedConfig,
     });
-    
+
     if (this.DEBUG) {
       console.log('[SessionManager] Session started:', this.currentSessionData);
     }
@@ -136,26 +136,26 @@ class SessionManager {
 
   handleSessionEnd() {
     if (!this.currentSessionData) return;
-    
+
     const sessionDuration = Date.now() - this.sessionStartTime;
-    
+
     this.logMilestone('session_ended', {
       duration: sessionDuration,
-      totalEvents: this.currentSessionData.events.length
+      totalEvents: this.currentSessionData.events.length,
     });
-    
+
     this.sessionHistory.push({
       ...this.currentSessionData,
       endTime: Date.now(),
       duration: sessionDuration,
-      completed: true
+      completed: true,
     });
-    
+
     this.saveSessionHistory();
     this.clearSessionState();
     this.currentSessionData = null;
     this.sessionStartTime = null;
-    
+
     if (this.DEBUG) {
       console.log('[SessionManager] Session ended, duration:', sessionDuration);
     }
@@ -165,11 +165,11 @@ class SessionManager {
     if (this.currentSessionData) {
       this.logMilestone('page_unload', {
         duration: Date.now() - this.sessionStartTime,
-        completed: false
+        completed: false,
       });
-      
+
       this.saveSessionState();
-      
+
       if (this.DEBUG) {
         console.log('[SessionManager] Page unload detected, session saved');
       }
@@ -179,11 +179,11 @@ class SessionManager {
   handleVisibilityChange() {
     if (document.hidden) {
       this.logMilestone('tab_hidden', {
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     } else {
       this.logMilestone('tab_visible', {
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
       this.updateLastActivity();
     }
@@ -195,24 +195,24 @@ class SessionManager {
 
   checkIdleStatus() {
     if (!this.currentSessionData || !this.lastActivityTime) return;
-    
+
     const idleTime = Date.now() - this.lastActivityTime;
     const sessionTime = Date.now() - this.sessionStartTime;
-    
+
     if (idleTime > this.idleThreshold) {
       this.logMilestone('idle_detected', {
-        idleTime: idleTime,
-        sessionTime: sessionTime
+        idleTime,
+        sessionTime,
       });
-      
+
       this.handleIdleSession();
     }
-    
+
     if (sessionTime > this.maxSessionDuration) {
       this.logMilestone('session_timeout', {
-        sessionTime: sessionTime
+        sessionTime,
       });
-      
+
       this.handleSessionTimeout();
     }
   }
@@ -221,12 +221,12 @@ class SessionManager {
     if (this.DEBUG) {
       console.log('[SessionManager] Idle session detected');
     }
-    
+
     // Could trigger a warning or pause the game
     window.dispatchEvent(new CustomEvent('sessionIdle', {
       detail: {
-        idleTime: Date.now() - this.lastActivityTime
-      }
+        idleTime: Date.now() - this.lastActivityTime,
+      },
     }));
   }
 
@@ -234,28 +234,28 @@ class SessionManager {
     if (this.DEBUG) {
       console.log('[SessionManager] Session timeout detected');
     }
-    
+
     // Force end the session
     window.dispatchEvent(new CustomEvent('sessionTimeout', {
       detail: {
-        sessionTime: Date.now() - this.sessionStartTime
-      }
+        sessionTime: Date.now() - this.sessionStartTime,
+      },
     }));
   }
 
   logMilestone(type, data = {}) {
     if (!this.currentSessionData) return;
-    
+
     const milestone = {
       type,
       timestamp: Date.now(),
       sessionTime: Date.now() - this.sessionStartTime,
-      ...data
+      ...data,
     };
-    
+
     this.currentSessionData.milestones.push(milestone);
     this.saveSessionState();
-    
+
     if (this.DEBUG) {
       console.log('[SessionManager] Milestone:', type, data);
     }
@@ -271,12 +271,12 @@ class SessionManager {
       screenResolution: {
         width: screen.width,
         height: screen.height,
-        colorDepth: screen.colorDepth
+        colorDepth: screen.colorDepth,
       },
       viewport: {
         width: window.innerWidth,
-        height: window.innerHeight
-      }
+        height: window.innerHeight,
+      },
     };
   }
 
@@ -287,7 +287,7 @@ class SessionManager {
       title: document.title,
       timestamp: new Date().toISOString(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      localStorageAvailable: this.testLocalStorage()
+      localStorageAvailable: this.testLocalStorage(),
     };
   }
 
@@ -304,18 +304,18 @@ class SessionManager {
 
   saveSessionState() {
     if (!this.currentSessionData || !this.experimentManager.userId) return;
-    
+
     try {
       const stateData = {
         ...this.currentSessionData,
-        lastSaved: Date.now()
+        lastSaved: Date.now(),
       };
-      
+
       localStorage.setItem(
-        `session_state_${this.experimentManager.userId}`, 
-        JSON.stringify(stateData)
+        `session_state_${this.experimentManager.userId}`,
+        JSON.stringify(stateData),
       );
-      
+
       return true;
     } catch (error) {
       console.error('[SessionManager] Error saving session state:', error);
@@ -325,19 +325,19 @@ class SessionManager {
 
   loadSessionState() {
     if (!this.experimentManager.userId) return null;
-    
+
     try {
       const stored = localStorage.getItem(`session_state_${this.experimentManager.userId}`);
       if (stored) {
         const stateData = JSON.parse(stored);
-        
+
         // Check if session is recent (within 1 hour)
         const age = Date.now() - stateData.lastSaved;
         if (age < 60 * 60 * 1000) {
           return stateData;
         }
       }
-      
+
       return null;
     } catch (error) {
       console.error('[SessionManager] Error loading session state:', error);
@@ -347,25 +347,25 @@ class SessionManager {
 
   clearSessionState() {
     if (!this.experimentManager.userId) return;
-    
+
     localStorage.removeItem(`session_state_${this.experimentManager.userId}`);
   }
 
   saveSessionHistory() {
     if (!this.experimentManager.userId) return;
-    
+
     try {
       const historyData = {
         userId: this.experimentManager.userId,
         sessions: this.sessionHistory,
-        lastUpdated: Date.now()
+        lastUpdated: Date.now(),
       };
-      
+
       localStorage.setItem(
-        `session_history_${this.experimentManager.userId}`, 
-        JSON.stringify(historyData)
+        `session_history_${this.experimentManager.userId}`,
+        JSON.stringify(historyData),
       );
-      
+
       return true;
     } catch (error) {
       console.error('[SessionManager] Error saving session history:', error);
@@ -375,7 +375,7 @@ class SessionManager {
 
   loadSessionHistory() {
     if (!this.experimentManager.userId) return;
-    
+
     try {
       const stored = localStorage.getItem(`session_history_${this.experimentManager.userId}`);
       if (stored) {
@@ -391,27 +391,27 @@ class SessionManager {
   getSessionAnalytics() {
     const completed = this.sessionHistory.filter(s => s.completed);
     const incomplete = this.sessionHistory.filter(s => !s.completed);
-    
-    const avgDuration = completed.length > 0 
-      ? completed.reduce((sum, s) => sum + s.duration, 0) / completed.length 
+
+    const avgDuration = completed.length > 0
+      ? completed.reduce((sum, s) => sum + s.duration, 0) / completed.length
       : 0;
-    
+
     const totalEvents = completed.reduce((sum, s) => sum + ((s.events && s.events.length) ? s.events.length : 0), 0);
-    
+
     return {
       totalSessions: this.sessionHistory.length,
       completedSessions: completed.length,
       incompleteSessions: incomplete.length,
       averageDuration: avgDuration,
-      totalEvents: totalEvents,
+      totalEvents,
       sessionHistory: this.sessionHistory.map(s => ({
         sessionId: s.sessionId,
         speedConfig: s.speedConfig,
         duration: s.duration,
         completed: s.completed,
         events: (s.events && s.events.length) ? s.events.length : 0,
-        milestones: (s.milestones && s.milestones.length) ? s.milestones.length : 0
-      }))
+        milestones: (s.milestones && s.milestones.length) ? s.milestones.length : 0,
+      })),
     };
   }
 
@@ -419,7 +419,7 @@ class SessionManager {
     const analytics = this.getSessionAnalytics();
     const deviceInfo = this.captureDeviceInfo();
     const browserInfo = this.captureBrowserInfo();
-    
+
     return {
       userId: this.experimentManager.userId,
       exportTimestamp: new Date().toISOString(),
@@ -427,7 +427,7 @@ class SessionManager {
       deviceInfo,
       browserInfo,
       fullSessionHistory: this.sessionHistory,
-      currentSession: this.currentSessionData
+      currentSession: this.currentSessionData,
     };
   }
 
@@ -440,7 +440,7 @@ class SessionManager {
       sessionHistory: this.sessionHistory.length,
       idleThreshold: this.idleThreshold,
       maxSessionDuration: this.maxSessionDuration,
-      analytics: this.getSessionAnalytics()
+      analytics: this.getSessionAnalytics(),
     };
   }
 }

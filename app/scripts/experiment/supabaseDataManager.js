@@ -194,9 +194,27 @@ class SupabaseDataManager {
    * Log an event during gameplay
    */
   async logEvent(eventData) {
-    if (!this.isInitialized || !this.currentSessionId) return false;
+    console.log('[SupabaseDataManager] 🎯 logEvent called with:', {
+      isInitialized: this.isInitialized,
+      currentSessionId: this.currentSessionId,
+      eventType: eventData.type,
+      userId: eventData.userId
+    });
+
+    if (!this.isInitialized || !this.currentSessionId) {
+      console.error('[SupabaseDataManager] ❌ Cannot log event - isInitialized:', this.isInitialized, 'currentSessionId:', this.currentSessionId);
+      return false;
+    }
 
     try {
+      console.log('[SupabaseDataManager] 📝 Inserting event to database:', {
+        session_id: this.currentSessionId,
+        user_id: eventData.userId,
+        event_type: eventData.type,
+        event_time: eventData.time,
+        event_data: eventData.data || {}
+      });
+
       const { error } = await this.supabase
         .from('events')
         .insert([
@@ -209,11 +227,15 @@ class SupabaseDataManager {
           },
         ]);
 
-      if (error) throw error;
+      if (error) {
+        console.error('[SupabaseDataManager] ❌ Database insert error:', error);
+        throw error;
+      }
 
+      console.log('[SupabaseDataManager] ✅ Event successfully inserted to database');
       return true;
     } catch (error) {
-      console.error('[SupabaseDataManager] Error logging event:', error);
+      console.error('[SupabaseDataManager] ❌ Error logging event:', error);
       return false;
     }
   }

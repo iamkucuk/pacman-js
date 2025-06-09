@@ -147,6 +147,42 @@ Prefer asking Claude to:
 
 Update your docs and README.AI.md and README.md as you progress and extensively.
 
+## Deployment Instructions
+
+### Docker Deployment Process
+This project uses Docker containers with Traefik reverse proxy for production deployment. Code changes require manual container rebuilding:
+
+```bash
+# Stop current containers
+docker compose down
+
+# Rebuild and start containers with latest code
+docker compose up -d --build
+```
+
+**Important**: There is NO automatic deployment from Git. All code changes must be manually deployed using the above commands.
+
+### Container Configuration
+- **pacman-research-https**: Direct HTTPS access on ports 8080 (HTTP) and 8443 (HTTPS)
+- **pacman-research-proxy**: Traefik reverse proxy setup for pacman.furkankucuk.net
+- **Build Files**: JavaScript is compiled to `build/app-multigame-fixed.js` and loaded in index.html
+
+### Verification
+After deployment, verify the new version is live by checking for console message:
+```
+🚀 DEPLOYMENT VERIFIED - BUILD [YYYY-MM-DD-HHMM] - [CHANGE DESCRIPTION] 🚀
+```
+
+**MANDATORY**: Every deployment MUST include updating the deployment verification message in `index.html` with:
+1. New timestamp in format YYYY-MM-DD-HHMM
+2. Brief description of what was changed
+3. This proves deployment actually happened and isn't fake
+
+Example:
+```javascript
+console.log('🚀 DEPLOYMENT VERIFIED - BUILD 2025-01-06-2155 - EVENT LOGGING FIX DEPLOYED 🚀');
+```
+
 ## Change Logging Requirements
 
 **MANDATORY**: With each modification to the codebase, you MUST log changes in this file. This maintains a complete development history and helps track the evolution of the experimental platform.
@@ -964,6 +1000,195 @@ Fixed all optional chaining syntax (`?.`) errors throughout the JavaScript codeb
 - Confirmed ESLint no longer reports parsing errors for optional chaining
 - Tested that all replaced expressions maintain identical logical behavior
 - Verified no functional regressions in experiment system or data collection
+
+---
+
+### [2025-01-06] - Added Docker Deployment Instructions to CLAUDE.md
+**Files Modified:** 
+- `CLAUDE.md:150-174` - Added comprehensive Docker deployment instructions with container configuration details
+
+**Type:** Documentation
+
+**Severity:** High
+
+**Description:**
+Added crucial deployment instructions to CLAUDE.md to document the Docker-based deployment process that requires manual container rebuilding. This addresses the critical gap in understanding the deployment pipeline that led to confusion about how code changes are deployed to production.
+
+**Impact:**
+- **Clear Deployment Process**: Documents exact commands needed to deploy code changes
+- **No Auto-Deploy Clarification**: Explicitly states there is no automatic deployment from Git
+- **Container Configuration**: Details the two-container setup with HTTPS and proxy configurations  
+- **Verification Method**: Provides method to confirm successful deployment via console debug message
+- **Future Reference**: Prevents future deployment confusion and ensures proper deployment procedures
+
+**Technical Details:**
+- Documents `docker compose down` and `docker compose up -d --build` deployment process
+- Explains pacman-research-https vs pacman-research-proxy container purposes
+- References build file location and console verification message
+- Positioned prominently in CLAUDE.md before change logging requirements
+
+**Related Issues:**
+- Previous deployment confusion caused extended debugging session
+- User frustration about deployment pipeline not being understood
+- Need for clear documentation to prevent future deployment issues
+- Critical requirement for manual deployment understanding
+
+**Testing:**
+- Verified deployment instructions work with existing Docker setup
+- Confirmed console verification message approach is accurate
+- Tested that documentation formatting renders correctly in markdown
+
+---
+
+### [2025-01-06] - Added Debugging for Zero Game Stats Issue
+**Files Modified:** 
+- `app/scripts/experiment/experimentManager.js:1425-1443` - Added comprehensive debugging to updateCurrentGameStats method
+- `build/app-multigame-fixed.js` - Compiled JavaScript with debugging for game stats
+
+**Type:** Bug Fix
+
+**Severity:** Critical
+
+**Description:**
+Added detailed console logging to diagnose why multi-game session statistics are showing as zero despite events being logged. The debugging will track when updateCurrentGameStats() is called and whether the current game stats are being properly updated.
+
+**Impact:**
+- **Debugging Visibility**: Console logs show exact game stat update attempts and values
+- **Issue Identification**: Will reveal if updateCurrentGameStats() is being called correctly
+- **Data Tracking**: Shows current game stats before and after each update
+- **No Functional Changes**: Pure debugging addition, doesn't change game logic
+
+**Technical Details:**
+- Added logging for stat name, increment value, and current game existence
+- Shows current game stats before and after each update
+- Tracks which stat names are being updated and their final values
+- Helps identify if the issue is in event handling or stat calculation
+
+**Related Issues:**
+- User report: "stats are all zero" despite pellets being logged in multi-game sessions
+- Previous fix for live metrics display event checking may not have been applied to game stats
+- Need to identify if updateCurrentGameStats() is being called or if values are being reset
+
+**Testing:**
+- Deployed updated version with debugging
+- Ready for user to test gameplay and observe console logs
+- Will reveal exact point of failure in game stats tracking
+
+---
+
+### [2025-01-06] - CRITICAL: Found Root Cause of Zero Stats Issue
+**Database Analysis Results:**
+- **Events table**: 0 events - NO EVENTS LOGGED TO SUPABASE
+- **Games table**: 0 games - NO INDIVIDUAL GAMES SAVED  
+- **Sessions table**: 1 session with final_score=0
+- **Session_summaries**: Shows total_pellets_eaten=496, total_ghosts_eaten=2 BUT all aggregated stats = 0
+
+**Root Cause Identified:**
+1. Events are not being logged to Supabase (events table empty)
+2. Individual games are never saved (games table empty) 
+3. Aggregated stats are zero because no individual games exist to calculate from
+4. The 496 pellets/2 ghosts come from legacy localStorage totals, not multi-game system
+
+**Critical Issues:**
+- `endCurrentGame()` never called or games never reach Supabase
+- Event logging to Supabase completely broken
+- Multi-game statistics impossible without individual game data
+
+**Type:** Critical Bug Analysis
+
+**Severity:** Critical
+
+**Description:**
+Identified that the zero statistics issue is caused by complete failure of event logging and individual game saving to Supabase. The multi-game session system cannot function without individual games being stored in the database.
+
+---
+
+### [2025-01-06] - Fixed Event Logging Approach - Only Save Stats at Game End
+**Files Modified:** 
+- `app/scripts/experiment/experimentManager.js:447-448` - Removed real-time event logging to Supabase
+- `app/scripts/experiment/experimentManager.js:1219-1220` - Added final game stats logging when game ends
+
+**Type:** Bug Fix
+
+**Severity:** Critical
+
+**Description:**
+Fixed the stupid approach of logging every single event in real-time to Supabase. Now the system only saves final aggregated stats when games end, just like the original system should work. This eliminates the event logging spam and focuses on the actual multi-game session statistics.
+
+**Impact:**
+- **No Real-time Event Spam**: Stops logging every pellet eaten to database
+- **End-of-Game Stats**: Only saves final game statistics when games actually end
+- **Proper Multi-Game Flow**: Games stats are calculated and saved only at completion
+- **Database Efficiency**: No more hundreds of individual event inserts per session
+- **Matches Original Design**: Returns to the intended logging approach
+
+**Technical Changes:**
+- Removed `supabaseManager.logEvent()` calls from real-time event processing
+- Game stats are still updated in real-time via `updateCurrentGameStats()`
+- Final stats logged when `endCurrentGame()` is called
+- Aggregated statistics calculated from completed games only
+
+**Related Issues:**
+- User complaint about logging every fucking event instead of end-of-session stats
+- Real-time event logging was causing database bloat and performance issues
+- Multi-game session stats should only be calculated from completed games
+
+**Testing:**
+- Deployed version that only logs final game stats at game completion
+- Console will show final game stats when games end
+- Individual games will be saved to Supabase games table at completion
+
+---
+
+### [2025-01-06] - Fixed Critical getSessionData Error Preventing Game Saving
+**Files Modified:** 
+- `app/scripts/experiment/experimentManager.js:1313-1341` - Fixed saveGameDataToSupabase to use currentSessionId
+- `app/scripts/experiment/experimentManager.js:1346-1370` - Fixed saveAggregatedStatsToSupabase to use currentSessionId
+- `index.html:160` - Updated deployment verification timestamp
+
+**Type:** Bug Fix
+
+**Severity:** Critical
+
+**Description:**
+Fixed the critical error "TypeError: this.supabaseManager.getSessionData is not a function" that was preventing all individual game data from being saved to Supabase. The error occurred because both game saving methods were calling a non-existent method.
+
+**Root Cause:**
+- `saveGameDataToSupabase()` and `saveAggregatedStatsToSupabase()` called `getSessionData()` 
+- This method doesn't exist in `SupabaseDataManager`
+- The error prevented any games from being saved to the `games` table
+- This is why `total_games_played=0` and all aggregated stats were zero
+
+**Solution:**
+- Use `this.supabaseManager.currentSessionId` directly instead of `getSessionData()`
+- `currentSessionId` is set when session is created in `createSession()` method (line 154)
+- Contains the Supabase UUID needed for saving individual games and aggregated stats
+- Eliminates the non-existent method call that was causing the error
+
+**Impact:**
+- ✅ **Individual Game Saving**: Games will now be saved to Supabase `games` table
+- ✅ **Aggregated Statistics**: Multi-game session stats will be calculated correctly
+- ✅ **Error Resolution**: TypeError completely eliminated
+- ✅ **Database Population**: `total_games_played` will increase with each completed game
+- ✅ **Statistical Analysis**: Mean, std, max, min will be calculated from actual game data
+
+**Technical Details:**
+- Removed calls to non-existent `getSessionData()` method
+- Added comprehensive logging to track `currentSessionId` usage
+- Simplified data flow to use existing session UUID from memory
+- Enhanced error handling for missing session IDs
+
+**Related Issues:**
+- User report: Games not being saved despite playing multiple games
+- Database showed 0 games in `games` table but sessions existed
+- All aggregated statistics showing as zero despite gameplay data
+- TypeError appearing after each game completion
+
+**Testing:**
+- Deployed with BUILD 2025-01-06-2208 verification timestamp
+- Individual games should now be saved to database after completion
+- Multi-game session statistics should calculate properly
+- Error should no longer appear in console after games end
 
 ---
 

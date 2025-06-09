@@ -444,22 +444,7 @@ class ExperimentManager {
       this.updateSummary(type, data);
       this.saveCurrentSession();
 
-      // Log to Supabase
-      if (this.useSupabase && this.supabaseManager) {
-        try {
-          console.log('[ExperimentManager] 📝 Logging event to Supabase:', type, data);
-          const success = await this.supabaseManager.logEvent(event);
-          if (success) {
-            console.log('[ExperimentManager] ✅ Event logged to Supabase successfully');
-          } else {
-            console.warn('[ExperimentManager] ⚠️ Event logging to Supabase returned false');
-          }
-        } catch (error) {
-          console.error('[ExperimentManager] ❌ Failed to log event to Supabase:', error);
-        }
-      } else {
-        console.log('[ExperimentManager] 📋 Skipping Supabase event log - useSupabase:', this.useSupabase, 'supabaseManager:', !!this.supabaseManager);
-      }
+      // Don't log individual events to Supabase - only save final stats at game/session end
 
       return true;
     } catch (error) {
@@ -1220,8 +1205,12 @@ class ExperimentManager {
    * End the current game with reason (game_over, level_complete, manual_end)
    */
   endCurrentGame(reason = 'manual_end', finalScore = 0) {
+    console.log('[ExperimentManager] 🚨 endCurrentGame CALLED with reason:', reason, 'finalScore:', finalScore);
+    console.log('[ExperimentManager] 🎮 currentSession exists:', !!this.currentSession);
+    console.log('[ExperimentManager] 🎯 currentGame exists:', !!(this.currentSession && this.currentSession.currentGame));
+
     if (!this.currentSession || !this.currentSession.currentGame) {
-      console.warn('[ExperimentManager] No active game to end');
+      console.warn('[ExperimentManager] ❌ No active game to end');
       return null;
     }
 
@@ -1231,9 +1220,14 @@ class ExperimentManager {
     game.finalScore = finalScore;
     game.endReason = reason;
 
+    // Calculate final game stats from current game stats (which are updated in real-time)
+    console.log('[ExperimentManager] 📊 Final game stats:', JSON.stringify(game.stats));
+
     // Move to completed games
     this.currentSession.games.push({ ...game });
     this.currentSession.currentGame = null;
+
+    console.log('[ExperimentManager] 📈 Total games in session now:', this.currentSession.games.length);
 
     // Update session statistics
     this.updateSessionAggregatedStats();
@@ -1241,6 +1235,7 @@ class ExperimentManager {
     console.log('[ExperimentManager] 🏁 Game ended:', game.gameId, 'Reason:', reason, 'Score:', finalScore);
     
     // Save game data to Supabase
+    console.log('[ExperimentManager] 💾 About to save game data to Supabase...');
     this.saveGameDataToSupabase(game);
     
     // Save session data
@@ -1316,23 +1311,29 @@ class ExperimentManager {
    * Save individual game data to Supabase
    */
   async saveGameDataToSupabase(gameData) {
+    console.log('[ExperimentManager] 🎯 saveGameDataToSupabase called with gameData:', JSON.stringify(gameData));
+    console.log('[ExperimentManager] 🔍 useSupabase:', this.useSupabase, 'supabaseManager:', !!this.supabaseManager, 'currentSession:', !!this.currentSession);
+
     if (!this.useSupabase || !this.supabaseManager || !this.currentSession) {
+      console.warn('[ExperimentManager] ❌ Cannot save game data - missing requirements');
       return;
     }
 
     try {
-      // Get the current session ID from Supabase
-      const sessionData = await this.supabaseManager.getSessionData(
-        this.currentSession.userId,
-        this.currentSession.sessionId
-      );
+      // Use the currentSessionId that was set when session was created
+      const supabaseSessionId = this.supabaseManager.currentSessionId;
+      console.log('[ExperimentManager] 💾 Using supabaseSessionId from currentSessionId:', supabaseSessionId);
       
-      if (sessionData && sessionData.length > 0) {
-        const supabaseSessionId = sessionData[0].id;
-        await this.supabaseManager.saveGameData(gameData, supabaseSessionId);
-        console.log('[ExperimentManager] ✅ Game data saved to Supabase');
+      if (!supabaseSessionId) {
+        console.error('[ExperimentManager] ❌ No currentSessionId available - session may not have been created properly');
+        return;
+      }
+        
+      const success = await this.supabaseManager.saveGameData(gameData, supabaseSessionId);
+      if (success) {
+        console.log('[ExperimentManager] ✅ Game data saved to Supabase successfully');
       } else {
-        console.warn('[ExperimentManager] ⚠️ Could not find session in Supabase for game data');
+        console.error('[ExperimentManager] ❌ saveGameData returned false');
       }
     } catch (error) {
       console.error('[ExperimentManager] ❌ Failed to save game data to Supabase:', error);
@@ -1348,23 +1349,21 @@ class ExperimentManager {
     }
 
     try {
-      // Get the current session ID from Supabase
-      const sessionData = await this.supabaseManager.getSessionData(
-        this.currentSession.userId,
-        this.currentSession.sessionId
-      );
+      // Use the currentSessionId that was set when session was created
+      const supabaseSessionId = this.supabaseManager.currentSessionId;
+      console.log('[ExperimentManager] 💾 Saving aggregated stats with supabaseSessionId:', supabaseSessionId);
       
-      if (sessionData && sessionData.length > 0) {
-        const supabaseSessionId = sessionData[0].id;
-        await this.supabaseManager.updateSessionAggregatedSummary(
-          supabaseSessionId,
-          this.currentSession.summary.aggregatedStats,
-          this.currentSession.summary.totalGamesPlayed
-        );
-        console.log('[ExperimentManager] ✅ Aggregated stats saved to Supabase');
-      } else {
-        console.warn('[ExperimentManager] ⚠️ Could not find session in Supabase for aggregated stats');
+      if (!supabaseSessionId) {
+        console.error('[ExperimentManager] ❌ No currentSessionId available for aggregated stats');
+        return;
       }
+      
+      await this.supabaseManager.updateSessionAggregatedSummary(
+        supabaseSessionId,
+        this.currentSession.summary.aggregatedStats,
+        this.currentSession.summary.totalGamesPlayed
+      );
+      console.log('[ExperimentManager] ✅ Aggregated stats saved to Supabase');
     } catch (error) {
       console.error('[ExperimentManager] ❌ Failed to save aggregated stats to Supabase:', error);
     }
@@ -1428,12 +1427,17 @@ class ExperimentManager {
       return;
     }
 
+    console.log('[ExperimentManager] 🎯 Attempting to update game stat:', statName, 'increment:', increment);
+    console.log('[ExperimentManager] 🎮 Current game exists:', !!this.currentSession.currentGame);
+    console.log('[ExperimentManager] 📊 Current game stats before update:', JSON.stringify(this.currentSession.currentGame.stats));
+
     const stats = this.currentSession.currentGame.stats;
     if (stats.hasOwnProperty(statName)) {
       stats[statName] += increment;
-      console.log('[ExperimentManager] 📈 Updated game stat:', statName, '=', stats[statName]);
+      console.log('[ExperimentManager] ✅ Updated game stat:', statName, '=', stats[statName]);
+      console.log('[ExperimentManager] 📊 All current game stats after update:', JSON.stringify(stats));
     } else {
-      console.warn('[ExperimentManager] Unknown stat name:', statName);
+      console.warn('[ExperimentManager] ❌ Unknown stat name:', statName);
     }
   }
 

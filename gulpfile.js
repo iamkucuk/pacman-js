@@ -15,7 +15,7 @@ function scripts() {
   return gulp
     .src('app/scripts/**/*.js')
     .pipe(removeCode({ production: true }))
-    .pipe(concat('app.js'))
+    .pipe(concat('app-multigame-fixed.js'))
     .pipe(gulp.dest('build'));
 }
 

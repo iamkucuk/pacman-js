@@ -4,11 +4,22 @@ class SpeedController {
       pacman: null,
       ghosts: {},
     };
-    this.currentMultipliers = {
-      pacman: 1.0,
-      ghost: 1.0,
+    this.currentSpeeds = {
+      pacman: 11,  // Default normal speed
+      ghost: 8.25  // Default normal ghost speed
     };
     this.isInitialized = false;
+  }
+
+  // Convert tiles per second to velocityPerMs (pixels per millisecond)
+  convertTilesToMs(tilesPerSecond) {
+    if (!this.gameCoordinator || !this.gameCoordinator.scaledTileSize) {
+      // Fallback calculation if scaledTileSize not available
+      const estimatedTileSize = 20; // Typical tile size
+      return (tilesPerSecond * estimatedTileSize) / 1000;
+    }
+    const scaledTileSize = this.gameCoordinator.scaledTileSize;
+    return (tilesPerSecond * scaledTileSize) / 1000;
   }
 
   initialize(gameCoordinator) {
@@ -69,15 +80,18 @@ class SpeedController {
   }
 
   applySpeedConfiguration(detail) {
-    const { pacmanMultiplier, ghostMultiplier, config } = detail;
+    const { pacmanSpeed, ghostSpeed, config } = detail;
 
     console.log('[SpeedController] ⚡ APPLYING SPEED CONFIG ⚡');
     console.log('[SpeedController] Config:', config);
-    console.log('[SpeedController] Pac-Man multiplier:', pacmanMultiplier);
-    console.log('[SpeedController] Ghost multiplier:', ghostMultiplier);
+    console.log('[SpeedController] Pac-Man speed:', pacmanSpeed, 'tiles/sec');
+    console.log('[SpeedController] Ghost speed:', ghostSpeed, 'tiles/sec');
 
-    this.currentMultipliers.pacman = pacmanMultiplier;
-    this.currentMultipliers.ghost = ghostMultiplier;
+    // Store the direct speeds
+    this.currentSpeeds = {
+      pacman: pacmanSpeed,
+      ghost: ghostSpeed
+    };
 
     if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
       console.warn('[SpeedController] ❌ Game entities not ready for speed application');
@@ -91,13 +105,13 @@ class SpeedController {
       // If still not ready after attempting to store, retry in 1 second
       if (this.originalSpeeds.pacman === null) {
         console.log('[SpeedController] ⏰ Retrying speed application in 1 second...');
-        setTimeout(() => this.applySpeedConfiguration({ pacmanMultiplier, ghostMultiplier, config }), 1000);
+        setTimeout(() => this.applySpeedConfiguration({ pacmanSpeed, ghostSpeed, config }), 1000);
         return;
       }
     }
 
-    this.applyPacmanSpeed(pacmanMultiplier);
-    this.applyGhostSpeeds(ghostMultiplier);
+    this.applyPacmanSpeed(pacmanSpeed);
+    this.applyGhostSpeeds(ghostSpeed);
 
     // Start periodic verification to ensure speeds stay applied
     this.startSpeedVerification();
@@ -118,73 +132,66 @@ class SpeedController {
   }
 
   verifyAndReapplySpeeds() {
-    if (!this.gameCoordinator || !this.gameCoordinator.pacman || this.originalSpeeds.pacman === null) {
+    if (!this.gameCoordinator || !this.gameCoordinator.pacman || !this.currentSpeeds) {
       return;
     }
 
     // Check if Pac-Man speed has been reset
-    const expectedPacmanSpeed = this.originalSpeeds.pacman * this.currentMultipliers.pacman;
+    const expectedPacmanSpeed = this.convertTilesToMs(this.currentSpeeds.pacman);
     const actualPacmanSpeed = this.gameCoordinator.pacman.velocityPerMs;
 
     if (Math.abs(actualPacmanSpeed - expectedPacmanSpeed) > 0.001) {
       console.log(`[SpeedController] 🔄 Pac-Man speed drift detected! Expected: ${expectedPacmanSpeed}, Actual: ${actualPacmanSpeed}, Reapplying...`);
-      this.applyPacmanSpeed(this.currentMultipliers.pacman);
+      this.applyPacmanSpeed(this.currentSpeeds.pacman);
     }
 
     // Check ghost speeds
     if (this.gameCoordinator.ghosts) {
       this.gameCoordinator.ghosts.forEach((ghost) => {
-        const originalSpeeds = this.originalSpeeds.ghosts[ghost.name];
-        if (originalSpeeds) {
-          const expectedSpeed = originalSpeeds.defaultSpeed * this.currentMultipliers.ghost;
-          const actualSpeed = ghost.velocityPerMs;
+        const expectedSpeed = this.convertTilesToMs(this.currentSpeeds.ghost);
+        const actualSpeed = ghost.velocityPerMs;
 
-          if (Math.abs(actualSpeed - expectedSpeed) > 0.001) {
-            console.log(`[SpeedController] 🔄 ${ghost.name} speed drift detected! Expected: ${expectedSpeed}, Actual: ${actualSpeed}, Reapplying...`);
-            // Reapply all ghost speeds
-            this.applyGhostSpeeds(this.currentMultipliers.ghost);
-          }
+        if (Math.abs(actualSpeed - expectedSpeed) > 0.001) {
+          console.log(`[SpeedController] 🔄 ${ghost.name} speed drift detected! Expected: ${expectedSpeed}, Actual: ${actualSpeed}, Reapplying...`);
+          // Reapply all ghost speeds
+          this.applyGhostSpeeds(this.currentSpeeds.ghost);
         }
       });
     }
   }
 
-  applyPacmanSpeed(multiplier) {
-    if (!this.gameCoordinator.pacman || this.originalSpeeds.pacman === null) {
+  applyPacmanSpeed(tilesPerSecond) {
+    if (!this.gameCoordinator.pacman) {
       console.log('[SpeedController] ❌ Cannot apply Pac-Man speed - game not ready');
       return;
     }
 
-    const newSpeed = this.originalSpeeds.pacman * multiplier;
+    const newSpeed = this.convertTilesToMs(tilesPerSecond);
     this.gameCoordinator.pacman.velocityPerMs = newSpeed;
 
-    console.log(`[SpeedController] 🟡 Pac-Man speed: ${this.originalSpeeds.pacman} * ${multiplier} = ${newSpeed}`);
+    console.log(`[SpeedController] 🟡 Pac-Man speed: ${tilesPerSecond} tiles/sec = ${newSpeed} velocityPerMs`);
   }
 
-  applyGhostSpeeds(multiplier) {
+  applyGhostSpeeds(tilesPerSecond) {
     if (!this.gameCoordinator.ghosts) {
       return;
     }
 
+    const newSpeedVelocityPerMs = this.convertTilesToMs(tilesPerSecond);
+
     this.gameCoordinator.ghosts.forEach((ghost) => {
-      const originalSpeeds = this.originalSpeeds.ghosts[ghost.name];
-      if (!originalSpeeds) {
-        console.warn(`[SpeedController] No original speeds found for ghost: ${ghost.name}`);
-        return;
-      }
+      // Set all ghost speed variants to the same base speed for consistency
+      ghost.slowSpeed = newSpeedVelocityPerMs;
+      ghost.mediumSpeed = newSpeedVelocityPerMs * 1.17; // Slightly faster for medium
+      ghost.fastSpeed = newSpeedVelocityPerMs * 1.33;   // Faster for fast mode
+      ghost.scaredSpeed = newSpeedVelocityPerMs * 0.5;  // Half speed when scared
+      ghost.transitionSpeed = newSpeedVelocityPerMs * 0.4; // Slow when transitioning
+      ghost.eyeSpeed = newSpeedVelocityPerMs * 2;       // Fast when returning as eyes
 
-      ghost.slowSpeed = originalSpeeds.slowSpeed * multiplier;
-      ghost.mediumSpeed = originalSpeeds.mediumSpeed * multiplier;
-      ghost.fastSpeed = originalSpeeds.fastSpeed * multiplier;
-      ghost.scaredSpeed = originalSpeeds.scaredSpeed * multiplier;
-      ghost.transitionSpeed = originalSpeeds.transitionSpeed * multiplier;
-      ghost.eyeSpeed = originalSpeeds.eyeSpeed * multiplier;
+      ghost.defaultSpeed = newSpeedVelocityPerMs;
+      ghost.velocityPerMs = newSpeedVelocityPerMs;
 
-      const currentSpeedType = this.determineCurrentSpeedType(ghost, originalSpeeds);
-      ghost.defaultSpeed = originalSpeeds[currentSpeedType] * multiplier;
-      ghost.velocityPerMs = ghost.defaultSpeed;
-
-      console.log(`[SpeedController] 👻 ${ghost.name} speeds multiplied by ${multiplier} (${originalSpeeds[currentSpeedType]} -> ${ghost.defaultSpeed})`);
+      console.log(`[SpeedController] 👻 ${ghost.name} speed: ${tilesPerSecond} tiles/sec = ${newSpeedVelocityPerMs} velocityPerMs`);
     });
   }
 
@@ -208,8 +215,9 @@ class SpeedController {
       this.speedVerificationInterval = null;
     }
 
-    this.currentMultipliers.pacman = 1.0;
-    this.currentMultipliers.ghost = 1.0;
+    // Reset to normal speeds (Pac-Man: 11 tiles/sec, Ghosts: 8.25 tiles/sec)
+    this.currentSpeeds.pacman = 11;
+    this.currentSpeeds.ghost = 8.25;
 
     if (this.gameCoordinator && this.gameCoordinator.pacman && this.originalSpeeds.pacman !== null) {
       this.gameCoordinator.pacman.velocityPerMs = this.originalSpeeds.pacman;
@@ -234,16 +242,16 @@ class SpeedController {
 
   getCurrentConfiguration() {
     return {
-      pacmanMultiplier: this.currentMultipliers.pacman,
-      ghostMultiplier: this.currentMultipliers.ghost,
-      isModified: this.currentMultipliers.pacman !== 1.0 || this.currentMultipliers.ghost !== 1.0,
+      pacmanSpeed: this.currentSpeeds.pacman,
+      ghostSpeed: this.currentSpeeds.ghost,
+      isModified: this.currentSpeeds.pacman !== 11 || this.currentSpeeds.ghost !== 8.25,
     };
   }
 
   getDebugInfo() {
     return {
       originalSpeeds: this.originalSpeeds,
-      currentMultipliers: this.currentMultipliers,
+      currentSpeeds: this.currentSpeeds,
       isInitialized: this.isInitialized,
       currentConfig: this.getCurrentConfiguration(),
     };
@@ -253,12 +261,12 @@ class SpeedController {
   debugCurrentSpeeds() {
     console.log('=== SPEED CONTROLLER DEBUG ===');
     console.log('Is Initialized:', this.isInitialized);
-    console.log('Current Multipliers:', this.currentMultipliers);
+    console.log('Current Speeds:', this.currentSpeeds);
 
     if (this.gameCoordinator && this.gameCoordinator.pacman) {
       console.log('Pac-Man Current Speed:', this.gameCoordinator.pacman.velocityPerMs);
-      console.log('Pac-Man Original Speed:', this.originalSpeeds.pacman);
-      console.log('Expected Pac-Man Speed:', this.originalSpeeds.pacman * this.currentMultipliers.pacman);
+      console.log('Pac-Man Target Speed:', this.currentSpeeds.pacman, 'tiles/sec');
+      console.log('Pac-Man Expected VelocityPerMs:', this.convertTilesToMs(this.currentSpeeds.pacman));
     } else {
       console.log('Pac-Man: Not available');
     }
@@ -267,11 +275,8 @@ class SpeedController {
       this.gameCoordinator.ghosts.forEach((ghost) => {
         console.log(`${ghost.name}:`);
         console.log(`  Current Speed: ${ghost.velocityPerMs}`);
-        console.log(`  Default Speed: ${ghost.defaultSpeed}`);
-        if (this.originalSpeeds.ghosts[ghost.name]) {
-          console.log(`  Original Default: ${this.originalSpeeds.ghosts[ghost.name].defaultSpeed}`);
-          console.log(`  Expected Speed: ${this.originalSpeeds.ghosts[ghost.name].defaultSpeed * this.currentMultipliers.ghost}`);
-        }
+        console.log(`  Target Speed: ${this.currentSpeeds.ghost} tiles/sec`);
+        console.log(`  Expected VelocityPerMs: ${this.convertTilesToMs(this.currentSpeeds.ghost)}`);
       });
     } else {
       console.log('Ghosts: Not available');

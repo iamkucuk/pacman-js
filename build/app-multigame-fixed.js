@@ -1330,7 +1330,7 @@ class GameCoordinator {
 
       // Check if user has completed all sessions
       const completedSessions = this.experimentManager.getCompletedSessionsCount();
-      if (completedSessions >= 9) {
+      if (completedSessions >= this.experimentManager.SESSION_CONFIGS.length) {
         // Show experiment complete message
         this.showExperimentCompleteMessage();
         return;
@@ -1388,7 +1388,7 @@ class GameCoordinator {
     if (userIdSection) {
       userIdSection.innerHTML = `
         <h3 class='experiment-title'>🎉 Experiment Complete! 🎉</h3>
-        <p class='experiment-description'>User "${this.experimentManager.userId}" has completed all 9 sessions.</p>
+        <p class='experiment-description'>User "${this.experimentManager.userId}" has completed all ${this.experimentManager.SESSION_CONFIGS.length} sessions.</p>
         <p class='experiment-description'>Thank you for participating in our research!</p>
         <div style="margin-top: 20px;">
           <button id="export-final-data" class="confirm-user-id-btn">Export Data</button>
@@ -2582,7 +2582,7 @@ class GameCoordinator {
     transitionOverlay.innerHTML = `
       <div style="text-align: center; padding: 40px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; border: 2px solid #4CAF50;">
         <h2 style="color: #4CAF50; margin-bottom: 20px;">Session ${completed} Complete!</h2>
-        <p style="margin: 15px 0;">Sessions completed: ${completed}/9</p>
+        <p style="margin: 15px 0;">Sessions completed: ${completed}/${this.experimentManager.SESSION_CONFIGS.length}</p>
         <p style="margin: 15px 0;">Sessions remaining: ${remaining}</p>
         <hr style="margin: 30px 0; border-color: #333;">
         <h3 style="color: #FFC107; margin-bottom: 15px;">Next Session Configuration:</h3>
@@ -2641,8 +2641,8 @@ class GameCoordinator {
     window.dispatchEvent(new CustomEvent('experimentComplete', {
       detail: {
         userId: this.experimentManager.userId,
-        completedSessions: 9,
-        totalSessions: 9,
+        completedSessions: this.experimentManager.SESSION_CONFIGS.length,
+        totalSessions: this.experimentManager.SESSION_CONFIGS.length,
         timestamp: Date.now(),
       },
     }));
@@ -2667,7 +2667,7 @@ class GameCoordinator {
     completionOverlay.innerHTML = `
       <div style="text-align: center; padding: 40px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; border: 2px solid #4CAF50;">
         <h2 style="color: #4CAF50; margin-bottom: 20px;">🎉 Experiment Complete! 🎉</h2>
-        <p style="margin: 15px 0; font-size: 18px;">All 9 sessions completed successfully!</p>
+        <p style="margin: 15px 0; font-size: 18px;">All ${this.experimentManager.SESSION_CONFIGS.length} sessions completed successfully!</p>
         <p style="margin: 15px 0;">User ID: <strong>${this.experimentManager.userId}</strong></p>
         <hr style="margin: 30px 0; border-color: #333;">
         <h3 style="color: #FFC107; margin-bottom: 15px;">Thank you for participating!</h3>
@@ -3972,20 +3972,54 @@ class DataManager {
 
 class ExperimentManager {
   constructor() {
-    this.SPEED_CONFIGS = {
-      pacman: {
-        slow: 0.3, // Very slow - 30% of normal speed
-        normal: 1.0, // Normal baseline
-        fast: 2.5, // Very fast - 250% of normal speed
+    // Hand-designed speed configurations for 6 sessions
+    // All speeds are in tiles per second for clarity and no multiplication bugs
+    this.SESSION_CONFIGS = [
+      {
+        id: 0,
+        name: "Ghosts 0.6x Pacman Speed",
+        description: "Ghosts are slower than Pacman (0.6x)",
+        pacmanSpeed: 11,     // Normal Pacman: 11 tiles/sec
+        ghostSpeed: 6.6      // Ghosts: 6.6 tiles/sec (0.6x Pacman)
       },
-      ghost: {
-        slow: 0.2, // Very slow - 20% of normal speed
-        normal: 1.0, // Normal baseline
-        fast: 3.0, // Very fast - 300% of normal speed
+      {
+        id: 1,
+        name: "Normal Ghost Speed",
+        description: "Standard game speed balance",
+        pacmanSpeed: 11,     // Normal Pacman: 11 tiles/sec
+        ghostSpeed: 8.25     // Normal ghosts: 8.25 tiles/sec (0.75x Pacman)
       },
-    };
+      {
+        id: 2,
+        name: "Ghosts Same Speed as Pacman",
+        description: "Ghosts match Pacman's speed exactly",
+        pacmanSpeed: 11,     // Normal Pacman: 11 tiles/sec
+        ghostSpeed: 11       // Ghosts same as Pacman: 11 tiles/sec
+      },
+      {
+        id: 3,
+        name: "Ghosts Slightly Faster",
+        description: "Ghosts are slightly faster than Pacman",
+        pacmanSpeed: 11,     // Normal Pacman: 11 tiles/sec
+        ghostSpeed: 13.2     // Ghosts faster: 13.2 tiles/sec (1.2x Pacman)
+      },
+      {
+        id: 4,
+        name: "Both 0.6x Speed",
+        description: "Both Pacman and ghosts at 60% normal speed",
+        pacmanSpeed: 6.6,    // Pacman slower: 6.6 tiles/sec (0.6x normal)
+        ghostSpeed: 4.95     // Ghosts slower: 4.95 tiles/sec (0.6x normal ghosts)
+      },
+      {
+        id: 5,
+        name: "Both 2x Speed",
+        description: "Both Pacman and ghosts at 200% normal speed",
+        pacmanSpeed: 22,     // Pacman faster: 22 tiles/sec (2x normal)
+        ghostSpeed: 16.5     // Ghosts faster: 16.5 tiles/sec (2x normal ghosts)
+      }
+    ];
 
-    this.PERMUTATIONS = this.generatePermutations();
+    this.PERMUTATIONS = this.SESSION_CONFIGS;
     this.currentSession = null;
     this.userId = null;
     this.sessionOrder = [];
@@ -4099,21 +4133,8 @@ class ExperimentManager {
   }
 
   generatePermutations() {
-    const permutations = [];
-    const pacmanSpeeds = ['slow', 'normal', 'fast'];
-    const ghostSpeeds = ['slow', 'normal', 'fast'];
-
-    let id = 0;
-    for (const pacmanSpeed of pacmanSpeeds) {
-      for (const ghostSpeed of ghostSpeeds) {
-        permutations.push({
-          id: id++,
-          pacman: pacmanSpeed,
-          ghost: ghostSpeed,
-        });
-      }
-    }
-    return permutations;
+    // Return the hand-designed session configurations
+    return this.SESSION_CONFIGS;
   }
 
   getNextSessionInfo() {
@@ -4122,7 +4143,7 @@ class ExperimentManager {
     }
 
     const completedSessions = this.getCompletedSessionsCount();
-    if (completedSessions >= 9) {
+    if (completedSessions >= this.SESSION_CONFIGS.length) {
       return null; // All sessions completed
     }
 
@@ -4187,15 +4208,32 @@ class ExperimentManager {
     try {
       const userData = await this.supabaseManager.getUserData(this.userId);
       if (userData) {
-        this.sessionOrder = userData.sessionOrder || [];
-        // Create metrics array based on completed sessions count
-        // Each completed session adds one entry to maintain compatibility
-        this.metrics = new Array(userData.completedSessionsCount).fill(null).map(() => ({}));
-        console.log('[ExperimentManager] 📖 User data loaded from Supabase');
-        console.log('[ExperimentManager] 📊 Completed sessions:', userData.completedSessionsCount);
-        console.log('[ExperimentManager] 📋 Session order:', this.sessionOrder);
-        console.log('[ExperimentManager] 📋 Created metrics array:', this.metrics);
-        console.log('[ExperimentManager] 📋 Metrics array length:', this.metrics.length);
+        // Check if user has old session order and migrate to new session system
+        if (userData.sessionOrder && userData.sessionOrder.length !== this.SESSION_CONFIGS.length) {
+          console.log('[ExperimentManager] 🔄 Detected old 9-session order, migrating to 6-session system...');
+          console.log('[ExperimentManager] 🗑️ Old order:', userData.sessionOrder);
+          
+          // Generate new 6-session order for this user
+          this.sessionOrder = this.generateRandomizedOrder();
+          this.metrics = [];
+          
+          // Update Supabase with new session order
+          await this.supabaseManager.updateUserSessionOrder(this.userId, this.sessionOrder);
+          
+          console.log('[ExperimentManager] ✅ Migrated to new 6-session order:', this.sessionOrder);
+        } else {
+          // User has valid 6-session order
+          this.sessionOrder = userData.sessionOrder || [];
+          // Create metrics array based on completed sessions count
+          // Each completed session adds one entry to maintain compatibility
+          this.metrics = new Array(userData.completedSessionsCount).fill(null).map(() => ({}));
+          console.log('[ExperimentManager] 📖 User data loaded from Supabase');
+          console.log('[ExperimentManager] 📊 Completed sessions:', userData.completedSessionsCount);
+          console.log('[ExperimentManager] 📋 Session order:', this.sessionOrder);
+          console.log('[ExperimentManager] 📋 Created metrics array:', this.metrics);
+          console.log('[ExperimentManager] 📋 Metrics array length:', this.metrics.length);
+        }
+        
         this.dataLoadedFromSupabase = true; // Mark that we successfully loaded from Supabase
         return true;
       }
@@ -4215,8 +4253,8 @@ class ExperimentManager {
       return this.sessionManager.generateAdvancedRandomization(this.userId);
     }
 
-    // Fallback to simple randomization
-    const order = [...Array(9).keys()];
+    // Fallback to simple randomization based on actual session count
+    const order = [...Array(this.SESSION_CONFIGS.length).keys()];
     for (let i = order.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [order[i], order[j]] = [order[j], order[i]];
@@ -4237,8 +4275,8 @@ class ExperimentManager {
     }
 
     const completedSessions = this.getCompletedSessionsCount();
-    if (completedSessions >= 9) {
-      throw new Error('All sessions completed');
+    if (completedSessions >= this.SESSION_CONFIGS.length) {
+      throw new Error(`All ${this.SESSION_CONFIGS.length} sessions completed`);
     }
 
     // Debug logging to help identify the issue
@@ -4335,7 +4373,7 @@ class ExperimentManager {
     return age < maxAge
            && savedState.userId === this.userId
            && savedState.sessionId > 0
-           && savedState.sessionId <= 9
+           && savedState.sessionId <= this.SESSION_CONFIGS.length
            && sessionMatches; // Only resume if it's the correct session
   }
 
@@ -4359,21 +4397,23 @@ class ExperimentManager {
   }
 
   applySpeedConfiguration(config) {
-    const pacmanMultiplier = this.SPEED_CONFIGS.pacman[config.pacman];
-    const ghostMultiplier = this.SPEED_CONFIGS.ghost[config.ghost];
+    const pacmanSpeed = config.pacmanSpeed;
+    const ghostSpeed = config.ghostSpeed;
 
     console.log('[ExperimentManager] 🚀 DISPATCHING SPEED CONFIG EVENT');
     console.log('[ExperimentManager] Config:', config);
-    console.log('[ExperimentManager] Pac-Man multiplier:', pacmanMultiplier);
-    console.log('[ExperimentManager] Ghost multiplier:', ghostMultiplier);
+    console.log('[ExperimentManager] Session Name:', config.name);
+    console.log('[ExperimentManager] Description:', config.description);
+    console.log('[ExperimentManager] Pac-Man speed:', pacmanSpeed, 'tiles/sec');
+    console.log('[ExperimentManager] Ghost speed:', ghostSpeed, 'tiles/sec');
 
     // Store the config for retry if needed
-    this.pendingSpeedConfig = { pacmanMultiplier, ghostMultiplier, config };
+    this.pendingSpeedConfig = { pacmanSpeed, ghostSpeed, config };
 
     const event = new CustomEvent('speedConfigChanged', {
       detail: {
-        pacmanMultiplier,
-        ghostMultiplier,
+        pacmanSpeed,
+        ghostSpeed,
         config,
       },
     });
@@ -4385,8 +4425,8 @@ class ExperimentManager {
     if (window.gameCoordinator && window.gameCoordinator.speedController && window.gameCoordinator.speedController.isInitialized) {
       console.log('[ExperimentManager] 🔄 Applying speeds directly as backup');
       window.gameCoordinator.speedController.applySpeedConfiguration({
-        pacmanMultiplier,
-        ghostMultiplier,
+        pacmanSpeed,
+        ghostSpeed,
         config,
       });
     }
@@ -4624,7 +4664,7 @@ class ExperimentManager {
   }
 
   getRemainingSessionsCount() {
-    return 9 - this.getCompletedSessionsCount();
+    return this.SESSION_CONFIGS.length - this.getCompletedSessionsCount();
   }
 
   getCurrentSessionInfo() {
@@ -4633,7 +4673,7 @@ class ExperimentManager {
     return {
       sessionId: this.currentSession.sessionId,
       completedSessions: this.getCompletedSessionsCount(),
-      totalSessions: 9,
+      totalSessions: this.SESSION_CONFIGS.length,
       speedConfig: this.currentSession.speedConfig,
     };
   }
@@ -4722,12 +4762,12 @@ class ExperimentManager {
       return false;
     }
 
-    if (!Array.isArray(userData.sessionOrder) || userData.sessionOrder.length > 9) {
+    if (!Array.isArray(userData.sessionOrder) || userData.sessionOrder.length > this.SESSION_CONFIGS.length) {
       console.warn('[ExperimentManager] Invalid session order in stored data');
       return false;
     }
 
-    if (!Array.isArray(userData.metrics) || userData.metrics.length > 9) {
+    if (!Array.isArray(userData.metrics) || userData.metrics.length > this.SESSION_CONFIGS.length) {
       console.warn('[ExperimentManager] Invalid metrics array in stored data');
       return false;
     }
@@ -4786,7 +4826,7 @@ class ExperimentManager {
 
   convertToCSV(data) {
     const headers = [
-      'userId', 'sessionId', 'sessionType', 'permutationId', 'pacmanSpeed', 'ghostSpeed',
+      'userId', 'sessionId', 'sessionType', 'permutationId', 'sessionName', 'pacmanSpeed', 'ghostSpeed',
       'totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths',
       'successfulTurns', 'totalTurns', 'gameTime', 'timestamp',
     ];
@@ -4794,10 +4834,11 @@ class ExperimentManager {
     const rows = data.metrics.map(session => [
       session.userId,
       session.sessionId,
-      session.permutationId + 1, // Session type (1-9)
+      session.permutationId + 1, // Session type (1-6)
       session.permutationId,
-      session.speedConfig.pacman,
-      session.speedConfig.ghost,
+      session.speedConfig.name || 'Unknown',
+      session.speedConfig.pacmanSpeed || 11,
+      session.speedConfig.ghostSpeed || 8.25,
       session.summary.totalGhostsEaten,
       session.summary.totalPelletsEaten,
       session.summary.totalDeaths,
@@ -4827,7 +4868,7 @@ class ExperimentManager {
       if (!existingCSV) {
         // First session - include headers
         const headers = [
-          'userId', 'sessionId', 'sessionType', 'permutationId', 'pacmanSpeed', 'ghostSpeed',
+          'userId', 'sessionId', 'sessionType', 'permutationId', 'sessionName', 'pacmanSpeed', 'ghostSpeed',
           'totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths',
           'successfulTurns', 'totalTurns', 'gameTime', 'timestamp',
         ];
@@ -4855,10 +4896,11 @@ class ExperimentManager {
     return [
       session.userId,
       session.sessionId,
-      session.permutationId + 1, // Session type (1-9)
+      session.permutationId + 1, // Session type (1-6)
       session.permutationId,
-      session.speedConfig.pacman,
-      session.speedConfig.ghost,
+      session.speedConfig.name || 'Unknown',
+      session.speedConfig.pacmanSpeed || 11,
+      session.speedConfig.ghostSpeed || 8.25,
       session.summary.totalGhostsEaten,
       session.summary.totalPelletsEaten,
       session.summary.totalDeaths,
@@ -5505,7 +5547,7 @@ class ExperimentUI {
             Experiment Complete!
           </h4>
           <p style="margin: 0 0 8px 0; font-size: 10px;">
-            All 9 sessions completed.
+            All ${this.experimentManager.SESSION_CONFIGS.length} sessions completed.
           </p>
           <button id="export-final-data-btn" style="width: 100%; padding: 4px; 
             background: #00ff00; border: none; border-radius: 2px; 
@@ -5864,7 +5906,7 @@ class ExperimentUI {
 
       sessionInfoDiv.innerHTML = `
         <strong>User:</strong> ${this.experimentManager.userId}<br>
-        <strong>Session:</strong> ${sessionInfo.sessionId}/9
+        <strong>Session:</strong> ${sessionInfo.sessionId}/${this.experimentManager.SESSION_CONFIGS.length}
       `;
     }
 
@@ -6125,7 +6167,7 @@ class ExperimentUI {
     debugInfoDiv.innerHTML = `
       User: ${debugInfo.userId || 'None'}<br>
       Current Session: ${debugInfo.currentSession || 'None'}<br>
-      Completed: ${debugInfo.completedSessions}/9<br>
+      Completed: ${debugInfo.completedSessions}/${this.experimentManager.SESSION_CONFIGS.length}<br>
       Active: ${debugInfo.isExperimentActive ? 'Yes' : 'No'}
     `;
   }
@@ -6145,7 +6187,7 @@ class ExperimentUI {
       debugInfoDiv.innerHTML = `
         User: ${debugInfo.userId || 'None'}<br>
         Current Session: ${debugInfo.currentSession || 'None'}<br>
-        Completed: ${debugInfo.completedSessions}/9<br>
+        Completed: ${debugInfo.completedSessions}/${this.experimentManager.SESSION_CONFIGS.length}<br>
         Active: ${debugInfo.isExperimentActive ? 'Yes' : 'No'}<br>
         Session Order: [${debugInfo.sessionOrder.join(', ')}]<br>
         Remaining: ${debugInfo.remainingSessions}
@@ -6313,7 +6355,7 @@ class ExportManager {
         sessionOrder: this.experimentManager.sessionOrder,
         speedConfigurations: this.experimentManager.PERMUTATIONS,
         completedSessions: this.experimentManager.getCompletedSessionsCount(),
-        totalSessions: 9,
+        totalSessions: this.experimentManager.SESSION_CONFIGS.length,
       },
       sessions: this.experimentManager.metrics,
       analytics: this.sessionManager.getSessionAnalytics(),
@@ -7048,7 +7090,7 @@ print("Plots saved to pacman_analysis_plots.png")`;
   }
 
   assessDataCompleteness() {
-    const totalSessions = 9;
+    const totalSessions = this.experimentManager.SESSION_CONFIGS.length;
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
 
     return {
@@ -7068,7 +7110,7 @@ print("Plots saved to pacman_analysis_plots.png")`;
       }
     });
 
-    return configCombinations.size === 9;
+    return configCombinations.size === this.experimentManager.SESSION_CONFIGS.length;
   }
 
   calculateDataQualityScore() {
@@ -7569,7 +7611,7 @@ class ProgressController {
   handleSessionEnd() {
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
 
-    if (completedSessions >= 9) {
+    if (completedSessions >= this.experimentManager.SESSION_CONFIGS.length) {
       this.progressState.currentPhase = 'experiment_complete';
       this.progressState.allowedActions = ['export_data', 'reset_experiment'];
       this.progressState.restrictions = ['start_session'];
@@ -7657,7 +7699,7 @@ class ProgressController {
   validateStartSession(validation, context) {
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
 
-    if (completedSessions >= 9) {
+    if (completedSessions >= this.experimentManager.SESSION_CONFIGS.length) {
       validation.errors.push('All sessions already completed');
       validation.allowed = false;
     }
@@ -7763,16 +7805,16 @@ class ProgressController {
     const { sessionOrder } = this.experimentManager;
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
 
-    if (sessionOrder.length !== 9) {
+    if (sessionOrder.length !== this.experimentManager.SESSION_CONFIGS.length) {
       return {
         valid: false,
-        message: `Invalid session order length: ${sessionOrder.length}, expected 9`,
+        message: `Invalid session order length: ${sessionOrder.length}, expected ${this.experimentManager.SESSION_CONFIGS.length}`,
         data: { sessionOrder },
       };
     }
 
     const uniqueIds = new Set(sessionOrder);
-    if (uniqueIds.size !== 9) {
+    if (uniqueIds.size !== this.experimentManager.SESSION_CONFIGS.length) {
       return {
         valid: false,
         message: 'Session order contains duplicate permutation IDs',
@@ -7939,8 +7981,8 @@ class ProgressController {
 
     return {
       phase: this.progressState.currentPhase,
-      progress: `${completedSessions}/9`,
-      progressPercent: Math.round((completedSessions / 9) * 100),
+      progress: `${completedSessions}/${this.experimentManager.SESSION_CONFIGS.length}`,
+      progressPercent: Math.round((completedSessions / this.experimentManager.SESSION_CONFIGS.length) * 100),
       allowedActions: this.progressState.allowedActions,
       restrictions: this.progressState.restrictions,
       warnings: this.progressState.warnings,
@@ -8028,19 +8070,20 @@ class SessionManager {
     const seed = this.createSeedFromUserId(userId);
     const rng = this.createSeededRandom(seed);
 
-    // Fisher-Yates shuffle with seeded random
-    const permutations = [...Array(9).keys()];
+    // Fisher-Yates shuffle with seeded random based on actual session count
+    const sessionCount = this.experimentManager.SESSION_CONFIGS.length;
+    const permutations = [...Array(sessionCount).keys()]; // 0, 1, 2, 3, 4, 5
     for (let i = permutations.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
       [permutations[i], permutations[j]] = [permutations[j], permutations[i]];
     }
 
-    // Ensure balanced distribution across speed types
-    const speedDistribution = this.validateSpeedDistribution(permutations);
+    // Validate session distribution for our 6 custom sessions
+    const sessionDistribution = this.validateSpeedDistribution(permutations);
 
     if (this.DEBUG) {
-      console.log('[SessionManager] Generated randomization for', userId, permutations);
-      console.log('[SessionManager] Speed distribution:', speedDistribution);
+      console.log('[SessionManager] Generated 6-session randomization for', userId, permutations);
+      console.log('[SessionManager] Session distribution:', sessionDistribution);
     }
 
     return permutations;
@@ -8065,17 +8108,18 @@ class SessionManager {
   }
 
   validateSpeedDistribution(permutations) {
-    const speeds = ['slow', 'normal', 'fast'];
-    const pacmanCounts = { slow: 0, normal: 0, fast: 0 };
-    const ghostCounts = { slow: 0, normal: 0, fast: 0 };
-
+    // For the new 6-session system, just return a valid distribution
+    // Since we have hand-designed sessions, we don't need the old speed validation
+    const sessionCounts = {};
+    
     permutations.forEach((permId) => {
       const config = this.experimentManager.PERMUTATIONS[permId];
-      pacmanCounts[config.pacman]++;
-      ghostCounts[config.ghost]++;
+      if (config && config.name) {
+        sessionCounts[config.name] = (sessionCounts[config.name] || 0) + 1;
+      }
     });
 
-    return { pacman: pacmanCounts, ghost: ghostCounts };
+    return { sessions: sessionCounts };
   }
 
   handleSessionStart(sessionInfo) {
@@ -8420,11 +8464,22 @@ class SpeedController {
       pacman: null,
       ghosts: {},
     };
-    this.currentMultipliers = {
-      pacman: 1.0,
-      ghost: 1.0,
+    this.currentSpeeds = {
+      pacman: 11,  // Default normal speed
+      ghost: 8.25  // Default normal ghost speed
     };
     this.isInitialized = false;
+  }
+
+  // Convert tiles per second to velocityPerMs (pixels per millisecond)
+  convertTilesToMs(tilesPerSecond) {
+    if (!this.gameCoordinator || !this.gameCoordinator.scaledTileSize) {
+      // Fallback calculation if scaledTileSize not available
+      const estimatedTileSize = 20; // Typical tile size
+      return (tilesPerSecond * estimatedTileSize) / 1000;
+    }
+    const scaledTileSize = this.gameCoordinator.scaledTileSize;
+    return (tilesPerSecond * scaledTileSize) / 1000;
   }
 
   initialize(gameCoordinator) {
@@ -8485,15 +8540,18 @@ class SpeedController {
   }
 
   applySpeedConfiguration(detail) {
-    const { pacmanMultiplier, ghostMultiplier, config } = detail;
+    const { pacmanSpeed, ghostSpeed, config } = detail;
 
     console.log('[SpeedController] ⚡ APPLYING SPEED CONFIG ⚡');
     console.log('[SpeedController] Config:', config);
-    console.log('[SpeedController] Pac-Man multiplier:', pacmanMultiplier);
-    console.log('[SpeedController] Ghost multiplier:', ghostMultiplier);
+    console.log('[SpeedController] Pac-Man speed:', pacmanSpeed, 'tiles/sec');
+    console.log('[SpeedController] Ghost speed:', ghostSpeed, 'tiles/sec');
 
-    this.currentMultipliers.pacman = pacmanMultiplier;
-    this.currentMultipliers.ghost = ghostMultiplier;
+    // Store the direct speeds
+    this.currentSpeeds = {
+      pacman: pacmanSpeed,
+      ghost: ghostSpeed
+    };
 
     if (!this.gameCoordinator || !this.gameCoordinator.pacman) {
       console.warn('[SpeedController] ❌ Game entities not ready for speed application');
@@ -8507,13 +8565,13 @@ class SpeedController {
       // If still not ready after attempting to store, retry in 1 second
       if (this.originalSpeeds.pacman === null) {
         console.log('[SpeedController] ⏰ Retrying speed application in 1 second...');
-        setTimeout(() => this.applySpeedConfiguration({ pacmanMultiplier, ghostMultiplier, config }), 1000);
+        setTimeout(() => this.applySpeedConfiguration({ pacmanSpeed, ghostSpeed, config }), 1000);
         return;
       }
     }
 
-    this.applyPacmanSpeed(pacmanMultiplier);
-    this.applyGhostSpeeds(ghostMultiplier);
+    this.applyPacmanSpeed(pacmanSpeed);
+    this.applyGhostSpeeds(ghostSpeed);
 
     // Start periodic verification to ensure speeds stay applied
     this.startSpeedVerification();
@@ -8534,73 +8592,66 @@ class SpeedController {
   }
 
   verifyAndReapplySpeeds() {
-    if (!this.gameCoordinator || !this.gameCoordinator.pacman || this.originalSpeeds.pacman === null) {
+    if (!this.gameCoordinator || !this.gameCoordinator.pacman || !this.currentSpeeds) {
       return;
     }
 
     // Check if Pac-Man speed has been reset
-    const expectedPacmanSpeed = this.originalSpeeds.pacman * this.currentMultipliers.pacman;
+    const expectedPacmanSpeed = this.convertTilesToMs(this.currentSpeeds.pacman);
     const actualPacmanSpeed = this.gameCoordinator.pacman.velocityPerMs;
 
     if (Math.abs(actualPacmanSpeed - expectedPacmanSpeed) > 0.001) {
       console.log(`[SpeedController] 🔄 Pac-Man speed drift detected! Expected: ${expectedPacmanSpeed}, Actual: ${actualPacmanSpeed}, Reapplying...`);
-      this.applyPacmanSpeed(this.currentMultipliers.pacman);
+      this.applyPacmanSpeed(this.currentSpeeds.pacman);
     }
 
     // Check ghost speeds
     if (this.gameCoordinator.ghosts) {
       this.gameCoordinator.ghosts.forEach((ghost) => {
-        const originalSpeeds = this.originalSpeeds.ghosts[ghost.name];
-        if (originalSpeeds) {
-          const expectedSpeed = originalSpeeds.defaultSpeed * this.currentMultipliers.ghost;
-          const actualSpeed = ghost.velocityPerMs;
+        const expectedSpeed = this.convertTilesToMs(this.currentSpeeds.ghost);
+        const actualSpeed = ghost.velocityPerMs;
 
-          if (Math.abs(actualSpeed - expectedSpeed) > 0.001) {
-            console.log(`[SpeedController] 🔄 ${ghost.name} speed drift detected! Expected: ${expectedSpeed}, Actual: ${actualSpeed}, Reapplying...`);
-            // Reapply all ghost speeds
-            this.applyGhostSpeeds(this.currentMultipliers.ghost);
-          }
+        if (Math.abs(actualSpeed - expectedSpeed) > 0.001) {
+          console.log(`[SpeedController] 🔄 ${ghost.name} speed drift detected! Expected: ${expectedSpeed}, Actual: ${actualSpeed}, Reapplying...`);
+          // Reapply all ghost speeds
+          this.applyGhostSpeeds(this.currentSpeeds.ghost);
         }
       });
     }
   }
 
-  applyPacmanSpeed(multiplier) {
-    if (!this.gameCoordinator.pacman || this.originalSpeeds.pacman === null) {
+  applyPacmanSpeed(tilesPerSecond) {
+    if (!this.gameCoordinator.pacman) {
       console.log('[SpeedController] ❌ Cannot apply Pac-Man speed - game not ready');
       return;
     }
 
-    const newSpeed = this.originalSpeeds.pacman * multiplier;
+    const newSpeed = this.convertTilesToMs(tilesPerSecond);
     this.gameCoordinator.pacman.velocityPerMs = newSpeed;
 
-    console.log(`[SpeedController] 🟡 Pac-Man speed: ${this.originalSpeeds.pacman} * ${multiplier} = ${newSpeed}`);
+    console.log(`[SpeedController] 🟡 Pac-Man speed: ${tilesPerSecond} tiles/sec = ${newSpeed} velocityPerMs`);
   }
 
-  applyGhostSpeeds(multiplier) {
+  applyGhostSpeeds(tilesPerSecond) {
     if (!this.gameCoordinator.ghosts) {
       return;
     }
 
+    const newSpeedVelocityPerMs = this.convertTilesToMs(tilesPerSecond);
+
     this.gameCoordinator.ghosts.forEach((ghost) => {
-      const originalSpeeds = this.originalSpeeds.ghosts[ghost.name];
-      if (!originalSpeeds) {
-        console.warn(`[SpeedController] No original speeds found for ghost: ${ghost.name}`);
-        return;
-      }
+      // Set all ghost speed variants to the same base speed for consistency
+      ghost.slowSpeed = newSpeedVelocityPerMs;
+      ghost.mediumSpeed = newSpeedVelocityPerMs * 1.17; // Slightly faster for medium
+      ghost.fastSpeed = newSpeedVelocityPerMs * 1.33;   // Faster for fast mode
+      ghost.scaredSpeed = newSpeedVelocityPerMs * 0.5;  // Half speed when scared
+      ghost.transitionSpeed = newSpeedVelocityPerMs * 0.4; // Slow when transitioning
+      ghost.eyeSpeed = newSpeedVelocityPerMs * 2;       // Fast when returning as eyes
 
-      ghost.slowSpeed = originalSpeeds.slowSpeed * multiplier;
-      ghost.mediumSpeed = originalSpeeds.mediumSpeed * multiplier;
-      ghost.fastSpeed = originalSpeeds.fastSpeed * multiplier;
-      ghost.scaredSpeed = originalSpeeds.scaredSpeed * multiplier;
-      ghost.transitionSpeed = originalSpeeds.transitionSpeed * multiplier;
-      ghost.eyeSpeed = originalSpeeds.eyeSpeed * multiplier;
+      ghost.defaultSpeed = newSpeedVelocityPerMs;
+      ghost.velocityPerMs = newSpeedVelocityPerMs;
 
-      const currentSpeedType = this.determineCurrentSpeedType(ghost, originalSpeeds);
-      ghost.defaultSpeed = originalSpeeds[currentSpeedType] * multiplier;
-      ghost.velocityPerMs = ghost.defaultSpeed;
-
-      console.log(`[SpeedController] 👻 ${ghost.name} speeds multiplied by ${multiplier} (${originalSpeeds[currentSpeedType]} -> ${ghost.defaultSpeed})`);
+      console.log(`[SpeedController] 👻 ${ghost.name} speed: ${tilesPerSecond} tiles/sec = ${newSpeedVelocityPerMs} velocityPerMs`);
     });
   }
 
@@ -8624,8 +8675,9 @@ class SpeedController {
       this.speedVerificationInterval = null;
     }
 
-    this.currentMultipliers.pacman = 1.0;
-    this.currentMultipliers.ghost = 1.0;
+    // Reset to normal speeds (Pac-Man: 11 tiles/sec, Ghosts: 8.25 tiles/sec)
+    this.currentSpeeds.pacman = 11;
+    this.currentSpeeds.ghost = 8.25;
 
     if (this.gameCoordinator && this.gameCoordinator.pacman && this.originalSpeeds.pacman !== null) {
       this.gameCoordinator.pacman.velocityPerMs = this.originalSpeeds.pacman;
@@ -8650,16 +8702,16 @@ class SpeedController {
 
   getCurrentConfiguration() {
     return {
-      pacmanMultiplier: this.currentMultipliers.pacman,
-      ghostMultiplier: this.currentMultipliers.ghost,
-      isModified: this.currentMultipliers.pacman !== 1.0 || this.currentMultipliers.ghost !== 1.0,
+      pacmanSpeed: this.currentSpeeds.pacman,
+      ghostSpeed: this.currentSpeeds.ghost,
+      isModified: this.currentSpeeds.pacman !== 11 || this.currentSpeeds.ghost !== 8.25,
     };
   }
 
   getDebugInfo() {
     return {
       originalSpeeds: this.originalSpeeds,
-      currentMultipliers: this.currentMultipliers,
+      currentSpeeds: this.currentSpeeds,
       isInitialized: this.isInitialized,
       currentConfig: this.getCurrentConfiguration(),
     };
@@ -8669,12 +8721,12 @@ class SpeedController {
   debugCurrentSpeeds() {
     console.log('=== SPEED CONTROLLER DEBUG ===');
     console.log('Is Initialized:', this.isInitialized);
-    console.log('Current Multipliers:', this.currentMultipliers);
+    console.log('Current Speeds:', this.currentSpeeds);
 
     if (this.gameCoordinator && this.gameCoordinator.pacman) {
       console.log('Pac-Man Current Speed:', this.gameCoordinator.pacman.velocityPerMs);
-      console.log('Pac-Man Original Speed:', this.originalSpeeds.pacman);
-      console.log('Expected Pac-Man Speed:', this.originalSpeeds.pacman * this.currentMultipliers.pacman);
+      console.log('Pac-Man Target Speed:', this.currentSpeeds.pacman, 'tiles/sec');
+      console.log('Pac-Man Expected VelocityPerMs:', this.convertTilesToMs(this.currentSpeeds.pacman));
     } else {
       console.log('Pac-Man: Not available');
     }
@@ -8683,11 +8735,8 @@ class SpeedController {
       this.gameCoordinator.ghosts.forEach((ghost) => {
         console.log(`${ghost.name}:`);
         console.log(`  Current Speed: ${ghost.velocityPerMs}`);
-        console.log(`  Default Speed: ${ghost.defaultSpeed}`);
-        if (this.originalSpeeds.ghosts[ghost.name]) {
-          console.log(`  Original Default: ${this.originalSpeeds.ghosts[ghost.name].defaultSpeed}`);
-          console.log(`  Expected Speed: ${this.originalSpeeds.ghosts[ghost.name].defaultSpeed * this.currentMultipliers.ghost}`);
-        }
+        console.log(`  Target Speed: ${this.currentSpeeds.ghost} tiles/sec`);
+        console.log(`  Expected VelocityPerMs: ${this.convertTilesToMs(this.currentSpeeds.ghost)}`);
       });
     } else {
       console.log('Ghosts: Not available');
@@ -8840,8 +8889,8 @@ class SupabaseDataManager {
             session_id: sessionData.sessionId,
             session_type: sessionData.permutationId + 1, // 1-9
             permutation_id: sessionData.permutationId,
-            pacman_speed: sessionData.speedConfig.pacman,
-            ghost_speed: sessionData.speedConfig.ghost,
+            pacman_speed: sessionData.speedConfig.pacmanSpeed,
+            ghost_speed: sessionData.speedConfig.ghostSpeed,
             resumed: sessionData.resumed || false,
           },
         ])
@@ -9833,11 +9882,11 @@ class VisualizationDashboard {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
           <div>
             <div style="color: #ccc;">Progress</div>
-            <div style="font-size: 18px; font-weight: bold;">${completedSessions}/9 Sessions</div>
+            <div style="font-size: 18px; font-weight: bold;">${completedSessions}/${this.experimentManager.SESSION_CONFIGS.length} Sessions</div>
           </div>
           <div>
             <div style="color: #ccc;">Completion</div>
-            <div style="font-size: 18px; font-weight: bold;">${Math.round((completedSessions / 9) * 100)}%</div>
+            <div style="font-size: 18px; font-weight: bold;">${Math.round((completedSessions / this.experimentManager.SESSION_CONFIGS.length) * 100)}%</div>
           </div>
           <div>
             <div style="color: #ccc;">User ID</div>
@@ -9950,7 +9999,7 @@ class VisualizationDashboard {
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
     `;
 
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < this.experimentManager.SESSION_CONFIGS.length; i++) {
       const isCompleted = i < completedSessions;
       const isCurrent = i === completedSessions && this.experimentManager.isExperimentActive;
       const permutationId = sessionOrder[i];
@@ -10189,8 +10238,8 @@ class VisualizationDashboard {
           <div>
             <h5 style="margin: 0 0 8px 0; color: #ccc;">Data Quality</h5>
             <div style="font-size: 11px;">
-              <div>Sessions: ${sessions.length}/9</div>
-              <div>Completeness: ${(sessions.length / 9 * 100).toFixed(1)}%</div>
+              <div>Sessions: ${sessions.length}/${this.experimentManager.SESSION_CONFIGS.length}</div>
+              <div>Completeness: ${(sessions.length / this.experimentManager.SESSION_CONFIGS.length * 100).toFixed(1)}%</div>
               <div>Data Points: ${sessions.reduce((sum, s) => sum + ((s.events && s.events.length) ? s.events.length : 0), 0)}</div>
             </div>
           </div>

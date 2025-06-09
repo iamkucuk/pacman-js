@@ -141,8 +141,8 @@ class SupabaseDataManager {
             session_id: sessionData.sessionId,
             session_type: sessionData.permutationId + 1, // 1-9
             permutation_id: sessionData.permutationId,
-            pacman_speed: sessionData.speedConfig.pacman,
-            ghost_speed: sessionData.speedConfig.ghost,
+            pacman_speed: sessionData.speedConfig.pacmanSpeed,
+            ghost_speed: sessionData.speedConfig.ghostSpeed,
             resumed: sessionData.resumed || false,
           },
         ])

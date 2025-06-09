@@ -216,11 +216,11 @@ class VisualizationDashboard {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
           <div>
             <div style="color: #ccc;">Progress</div>
-            <div style="font-size: 18px; font-weight: bold;">${completedSessions}/9 Sessions</div>
+            <div style="font-size: 18px; font-weight: bold;">${completedSessions}/${this.experimentManager.SESSION_CONFIGS.length} Sessions</div>
           </div>
           <div>
             <div style="color: #ccc;">Completion</div>
-            <div style="font-size: 18px; font-weight: bold;">${Math.round((completedSessions / 9) * 100)}%</div>
+            <div style="font-size: 18px; font-weight: bold;">${Math.round((completedSessions / this.experimentManager.SESSION_CONFIGS.length) * 100)}%</div>
           </div>
           <div>
             <div style="color: #ccc;">User ID</div>
@@ -333,7 +333,7 @@ class VisualizationDashboard {
         <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
     `;
 
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < this.experimentManager.SESSION_CONFIGS.length; i++) {
       const isCompleted = i < completedSessions;
       const isCurrent = i === completedSessions && this.experimentManager.isExperimentActive;
       const permutationId = sessionOrder[i];
@@ -572,8 +572,8 @@ class VisualizationDashboard {
           <div>
             <h5 style="margin: 0 0 8px 0; color: #ccc;">Data Quality</h5>
             <div style="font-size: 11px;">
-              <div>Sessions: ${sessions.length}/9</div>
-              <div>Completeness: ${(sessions.length / 9 * 100).toFixed(1)}%</div>
+              <div>Sessions: ${sessions.length}/${this.experimentManager.SESSION_CONFIGS.length}</div>
+              <div>Completeness: ${(sessions.length / this.experimentManager.SESSION_CONFIGS.length * 100).toFixed(1)}%</div>
               <div>Data Points: ${sessions.reduce((sum, s) => sum + ((s.events && s.events.length) ? s.events.length : 0), 0)}</div>
             </div>
           </div>

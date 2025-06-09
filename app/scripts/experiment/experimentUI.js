@@ -75,7 +75,7 @@ class ExperimentUI {
             Experiment Complete!
           </h4>
           <p style="margin: 0 0 8px 0; font-size: 10px;">
-            All 9 sessions completed.
+            All ${this.experimentManager.SESSION_CONFIGS.length} sessions completed.
           </p>
           <button id="export-final-data-btn" style="width: 100%; padding: 4px; 
             background: #00ff00; border: none; border-radius: 2px; 
@@ -434,7 +434,7 @@ class ExperimentUI {
 
       sessionInfoDiv.innerHTML = `
         <strong>User:</strong> ${this.experimentManager.userId}<br>
-        <strong>Session:</strong> ${sessionInfo.sessionId}/9
+        <strong>Session:</strong> ${sessionInfo.sessionId}/${this.experimentManager.SESSION_CONFIGS.length}
       `;
     }
 
@@ -695,7 +695,7 @@ class ExperimentUI {
     debugInfoDiv.innerHTML = `
       User: ${debugInfo.userId || 'None'}<br>
       Current Session: ${debugInfo.currentSession || 'None'}<br>
-      Completed: ${debugInfo.completedSessions}/9<br>
+      Completed: ${debugInfo.completedSessions}/${this.experimentManager.SESSION_CONFIGS.length}<br>
       Active: ${debugInfo.isExperimentActive ? 'Yes' : 'No'}
     `;
   }
@@ -715,7 +715,7 @@ class ExperimentUI {
       debugInfoDiv.innerHTML = `
         User: ${debugInfo.userId || 'None'}<br>
         Current Session: ${debugInfo.currentSession || 'None'}<br>
-        Completed: ${debugInfo.completedSessions}/9<br>
+        Completed: ${debugInfo.completedSessions}/${this.experimentManager.SESSION_CONFIGS.length}<br>
         Active: ${debugInfo.isExperimentActive ? 'Yes' : 'No'}<br>
         Session Order: [${debugInfo.sessionOrder.join(', ')}]<br>
         Remaining: ${debugInfo.remainingSessions}

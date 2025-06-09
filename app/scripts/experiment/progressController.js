@@ -91,7 +91,7 @@ class ProgressController {
   handleSessionEnd() {
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
 
-    if (completedSessions >= 9) {
+    if (completedSessions >= this.experimentManager.SESSION_CONFIGS.length) {
       this.progressState.currentPhase = 'experiment_complete';
       this.progressState.allowedActions = ['export_data', 'reset_experiment'];
       this.progressState.restrictions = ['start_session'];
@@ -179,7 +179,7 @@ class ProgressController {
   validateStartSession(validation, context) {
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
 
-    if (completedSessions >= 9) {
+    if (completedSessions >= this.experimentManager.SESSION_CONFIGS.length) {
       validation.errors.push('All sessions already completed');
       validation.allowed = false;
     }
@@ -285,16 +285,16 @@ class ProgressController {
     const { sessionOrder } = this.experimentManager;
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
 
-    if (sessionOrder.length !== 9) {
+    if (sessionOrder.length !== this.experimentManager.SESSION_CONFIGS.length) {
       return {
         valid: false,
-        message: `Invalid session order length: ${sessionOrder.length}, expected 9`,
+        message: `Invalid session order length: ${sessionOrder.length}, expected ${this.experimentManager.SESSION_CONFIGS.length}`,
         data: { sessionOrder },
       };
     }
 
     const uniqueIds = new Set(sessionOrder);
-    if (uniqueIds.size !== 9) {
+    if (uniqueIds.size !== this.experimentManager.SESSION_CONFIGS.length) {
       return {
         valid: false,
         message: 'Session order contains duplicate permutation IDs',
@@ -461,8 +461,8 @@ class ProgressController {
 
     return {
       phase: this.progressState.currentPhase,
-      progress: `${completedSessions}/9`,
-      progressPercent: Math.round((completedSessions / 9) * 100),
+      progress: `${completedSessions}/${this.experimentManager.SESSION_CONFIGS.length}`,
+      progressPercent: Math.round((completedSessions / this.experimentManager.SESSION_CONFIGS.length) * 100),
       allowedActions: this.progressState.allowedActions,
       restrictions: this.progressState.restrictions,
       warnings: this.progressState.warnings,

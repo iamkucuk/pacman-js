@@ -60,19 +60,20 @@ class SessionManager {
     const seed = this.createSeedFromUserId(userId);
     const rng = this.createSeededRandom(seed);
 
-    // Fisher-Yates shuffle with seeded random
-    const permutations = [...Array(9).keys()];
+    // Fisher-Yates shuffle with seeded random based on actual session count
+    const sessionCount = this.experimentManager.SESSION_CONFIGS.length;
+    const permutations = [...Array(sessionCount).keys()]; // 0, 1, 2, 3, 4, 5
     for (let i = permutations.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
       [permutations[i], permutations[j]] = [permutations[j], permutations[i]];
     }
 
-    // Ensure balanced distribution across speed types
-    const speedDistribution = this.validateSpeedDistribution(permutations);
+    // Validate session distribution for our 6 custom sessions
+    const sessionDistribution = this.validateSpeedDistribution(permutations);
 
     if (this.DEBUG) {
-      console.log('[SessionManager] Generated randomization for', userId, permutations);
-      console.log('[SessionManager] Speed distribution:', speedDistribution);
+      console.log('[SessionManager] Generated 6-session randomization for', userId, permutations);
+      console.log('[SessionManager] Session distribution:', sessionDistribution);
     }
 
     return permutations;
@@ -97,17 +98,18 @@ class SessionManager {
   }
 
   validateSpeedDistribution(permutations) {
-    const speeds = ['slow', 'normal', 'fast'];
-    const pacmanCounts = { slow: 0, normal: 0, fast: 0 };
-    const ghostCounts = { slow: 0, normal: 0, fast: 0 };
-
+    // For the new 6-session system, just return a valid distribution
+    // Since we have hand-designed sessions, we don't need the old speed validation
+    const sessionCounts = {};
+    
     permutations.forEach((permId) => {
       const config = this.experimentManager.PERMUTATIONS[permId];
-      pacmanCounts[config.pacman]++;
-      ghostCounts[config.ghost]++;
+      if (config && config.name) {
+        sessionCounts[config.name] = (sessionCounts[config.name] || 0) + 1;
+      }
     });
 
-    return { pacman: pacmanCounts, ghost: ghostCounts };
+    return { sessions: sessionCounts };
   }
 
   handleSessionStart(sessionInfo) {

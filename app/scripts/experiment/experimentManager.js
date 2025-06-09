@@ -1,19 +1,53 @@
 class ExperimentManager {
   constructor() {
-    this.SPEED_CONFIGS = {
-      pacman: {
-        slow: 0.3, // Very slow - 30% of normal speed
-        normal: 1.0, // Normal baseline
-        fast: 2.5, // Very fast - 250% of normal speed
+    // Hand-designed speed configurations for 6 sessions
+    // All speeds are in tiles per second for clarity and no multiplication bugs
+    this.SESSION_CONFIGS = [
+      {
+        id: 0,
+        name: "Ghosts 0.6x Pacman Speed",
+        description: "Ghosts are slower than Pacman (0.6x)",
+        pacmanSpeed: 11,     // Normal Pacman: 11 tiles/sec
+        ghostSpeed: 6.6      // Ghosts: 6.6 tiles/sec (0.6x Pacman)
       },
-      ghost: {
-        slow: 0.2, // Very slow - 20% of normal speed
-        normal: 1.0, // Normal baseline
-        fast: 3.0, // Very fast - 300% of normal speed
+      {
+        id: 1,
+        name: "Normal Ghost Speed",
+        description: "Standard game speed balance",
+        pacmanSpeed: 11,     // Normal Pacman: 11 tiles/sec
+        ghostSpeed: 8.25     // Normal ghosts: 8.25 tiles/sec (0.75x Pacman)
       },
-    };
+      {
+        id: 2,
+        name: "Ghosts Same Speed as Pacman",
+        description: "Ghosts match Pacman's speed exactly",
+        pacmanSpeed: 11,     // Normal Pacman: 11 tiles/sec
+        ghostSpeed: 11       // Ghosts same as Pacman: 11 tiles/sec
+      },
+      {
+        id: 3,
+        name: "Ghosts Slightly Faster",
+        description: "Ghosts are slightly faster than Pacman",
+        pacmanSpeed: 11,     // Normal Pacman: 11 tiles/sec
+        ghostSpeed: 13.2     // Ghosts faster: 13.2 tiles/sec (1.2x Pacman)
+      },
+      {
+        id: 4,
+        name: "Both 0.6x Speed",
+        description: "Both Pacman and ghosts at 60% normal speed",
+        pacmanSpeed: 6.6,    // Pacman slower: 6.6 tiles/sec (0.6x normal)
+        ghostSpeed: 4.95     // Ghosts slower: 4.95 tiles/sec (0.6x normal ghosts)
+      },
+      {
+        id: 5,
+        name: "Both 2x Speed",
+        description: "Both Pacman and ghosts at 200% normal speed",
+        pacmanSpeed: 22,     // Pacman faster: 22 tiles/sec (2x normal)
+        ghostSpeed: 16.5     // Ghosts faster: 16.5 tiles/sec (2x normal ghosts)
+      }
+    ];
 
-    this.PERMUTATIONS = this.generatePermutations();
+    this.PERMUTATIONS = this.SESSION_CONFIGS;
     this.currentSession = null;
     this.userId = null;
     this.sessionOrder = [];
@@ -127,21 +161,8 @@ class ExperimentManager {
   }
 
   generatePermutations() {
-    const permutations = [];
-    const pacmanSpeeds = ['slow', 'normal', 'fast'];
-    const ghostSpeeds = ['slow', 'normal', 'fast'];
-
-    let id = 0;
-    for (const pacmanSpeed of pacmanSpeeds) {
-      for (const ghostSpeed of ghostSpeeds) {
-        permutations.push({
-          id: id++,
-          pacman: pacmanSpeed,
-          ghost: ghostSpeed,
-        });
-      }
-    }
-    return permutations;
+    // Return the hand-designed session configurations
+    return this.SESSION_CONFIGS;
   }
 
   getNextSessionInfo() {
@@ -150,7 +171,7 @@ class ExperimentManager {
     }
 
     const completedSessions = this.getCompletedSessionsCount();
-    if (completedSessions >= 9) {
+    if (completedSessions >= this.SESSION_CONFIGS.length) {
       return null; // All sessions completed
     }
 
@@ -215,15 +236,32 @@ class ExperimentManager {
     try {
       const userData = await this.supabaseManager.getUserData(this.userId);
       if (userData) {
-        this.sessionOrder = userData.sessionOrder || [];
-        // Create metrics array based on completed sessions count
-        // Each completed session adds one entry to maintain compatibility
-        this.metrics = new Array(userData.completedSessionsCount).fill(null).map(() => ({}));
-        console.log('[ExperimentManager] 📖 User data loaded from Supabase');
-        console.log('[ExperimentManager] 📊 Completed sessions:', userData.completedSessionsCount);
-        console.log('[ExperimentManager] 📋 Session order:', this.sessionOrder);
-        console.log('[ExperimentManager] 📋 Created metrics array:', this.metrics);
-        console.log('[ExperimentManager] 📋 Metrics array length:', this.metrics.length);
+        // Check if user has old session order and migrate to new session system
+        if (userData.sessionOrder && userData.sessionOrder.length !== this.SESSION_CONFIGS.length) {
+          console.log('[ExperimentManager] 🔄 Detected old 9-session order, migrating to 6-session system...');
+          console.log('[ExperimentManager] 🗑️ Old order:', userData.sessionOrder);
+          
+          // Generate new 6-session order for this user
+          this.sessionOrder = this.generateRandomizedOrder();
+          this.metrics = [];
+          
+          // Update Supabase with new session order
+          await this.supabaseManager.updateUserSessionOrder(this.userId, this.sessionOrder);
+          
+          console.log('[ExperimentManager] ✅ Migrated to new 6-session order:', this.sessionOrder);
+        } else {
+          // User has valid 6-session order
+          this.sessionOrder = userData.sessionOrder || [];
+          // Create metrics array based on completed sessions count
+          // Each completed session adds one entry to maintain compatibility
+          this.metrics = new Array(userData.completedSessionsCount).fill(null).map(() => ({}));
+          console.log('[ExperimentManager] 📖 User data loaded from Supabase');
+          console.log('[ExperimentManager] 📊 Completed sessions:', userData.completedSessionsCount);
+          console.log('[ExperimentManager] 📋 Session order:', this.sessionOrder);
+          console.log('[ExperimentManager] 📋 Created metrics array:', this.metrics);
+          console.log('[ExperimentManager] 📋 Metrics array length:', this.metrics.length);
+        }
+        
         this.dataLoadedFromSupabase = true; // Mark that we successfully loaded from Supabase
         return true;
       }
@@ -243,8 +281,8 @@ class ExperimentManager {
       return this.sessionManager.generateAdvancedRandomization(this.userId);
     }
 
-    // Fallback to simple randomization
-    const order = [...Array(9).keys()];
+    // Fallback to simple randomization based on actual session count
+    const order = [...Array(this.SESSION_CONFIGS.length).keys()];
     for (let i = order.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [order[i], order[j]] = [order[j], order[i]];
@@ -265,8 +303,8 @@ class ExperimentManager {
     }
 
     const completedSessions = this.getCompletedSessionsCount();
-    if (completedSessions >= 9) {
-      throw new Error('All sessions completed');
+    if (completedSessions >= this.SESSION_CONFIGS.length) {
+      throw new Error(`All ${this.SESSION_CONFIGS.length} sessions completed`);
     }
 
     // Debug logging to help identify the issue
@@ -363,7 +401,7 @@ class ExperimentManager {
     return age < maxAge
            && savedState.userId === this.userId
            && savedState.sessionId > 0
-           && savedState.sessionId <= 9
+           && savedState.sessionId <= this.SESSION_CONFIGS.length
            && sessionMatches; // Only resume if it's the correct session
   }
 
@@ -387,21 +425,23 @@ class ExperimentManager {
   }
 
   applySpeedConfiguration(config) {
-    const pacmanMultiplier = this.SPEED_CONFIGS.pacman[config.pacman];
-    const ghostMultiplier = this.SPEED_CONFIGS.ghost[config.ghost];
+    const pacmanSpeed = config.pacmanSpeed;
+    const ghostSpeed = config.ghostSpeed;
 
     console.log('[ExperimentManager] 🚀 DISPATCHING SPEED CONFIG EVENT');
     console.log('[ExperimentManager] Config:', config);
-    console.log('[ExperimentManager] Pac-Man multiplier:', pacmanMultiplier);
-    console.log('[ExperimentManager] Ghost multiplier:', ghostMultiplier);
+    console.log('[ExperimentManager] Session Name:', config.name);
+    console.log('[ExperimentManager] Description:', config.description);
+    console.log('[ExperimentManager] Pac-Man speed:', pacmanSpeed, 'tiles/sec');
+    console.log('[ExperimentManager] Ghost speed:', ghostSpeed, 'tiles/sec');
 
     // Store the config for retry if needed
-    this.pendingSpeedConfig = { pacmanMultiplier, ghostMultiplier, config };
+    this.pendingSpeedConfig = { pacmanSpeed, ghostSpeed, config };
 
     const event = new CustomEvent('speedConfigChanged', {
       detail: {
-        pacmanMultiplier,
-        ghostMultiplier,
+        pacmanSpeed,
+        ghostSpeed,
         config,
       },
     });
@@ -413,8 +453,8 @@ class ExperimentManager {
     if (window.gameCoordinator && window.gameCoordinator.speedController && window.gameCoordinator.speedController.isInitialized) {
       console.log('[ExperimentManager] 🔄 Applying speeds directly as backup');
       window.gameCoordinator.speedController.applySpeedConfiguration({
-        pacmanMultiplier,
-        ghostMultiplier,
+        pacmanSpeed,
+        ghostSpeed,
         config,
       });
     }
@@ -652,7 +692,7 @@ class ExperimentManager {
   }
 
   getRemainingSessionsCount() {
-    return 9 - this.getCompletedSessionsCount();
+    return this.SESSION_CONFIGS.length - this.getCompletedSessionsCount();
   }
 
   getCurrentSessionInfo() {
@@ -661,7 +701,7 @@ class ExperimentManager {
     return {
       sessionId: this.currentSession.sessionId,
       completedSessions: this.getCompletedSessionsCount(),
-      totalSessions: 9,
+      totalSessions: this.SESSION_CONFIGS.length,
       speedConfig: this.currentSession.speedConfig,
     };
   }
@@ -750,12 +790,12 @@ class ExperimentManager {
       return false;
     }
 
-    if (!Array.isArray(userData.sessionOrder) || userData.sessionOrder.length > 9) {
+    if (!Array.isArray(userData.sessionOrder) || userData.sessionOrder.length > this.SESSION_CONFIGS.length) {
       console.warn('[ExperimentManager] Invalid session order in stored data');
       return false;
     }
 
-    if (!Array.isArray(userData.metrics) || userData.metrics.length > 9) {
+    if (!Array.isArray(userData.metrics) || userData.metrics.length > this.SESSION_CONFIGS.length) {
       console.warn('[ExperimentManager] Invalid metrics array in stored data');
       return false;
     }
@@ -814,7 +854,7 @@ class ExperimentManager {
 
   convertToCSV(data) {
     const headers = [
-      'userId', 'sessionId', 'sessionType', 'permutationId', 'pacmanSpeed', 'ghostSpeed',
+      'userId', 'sessionId', 'sessionType', 'permutationId', 'sessionName', 'pacmanSpeed', 'ghostSpeed',
       'totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths',
       'successfulTurns', 'totalTurns', 'gameTime', 'timestamp',
     ];
@@ -822,10 +862,11 @@ class ExperimentManager {
     const rows = data.metrics.map(session => [
       session.userId,
       session.sessionId,
-      session.permutationId + 1, // Session type (1-9)
+      session.permutationId + 1, // Session type (1-6)
       session.permutationId,
-      session.speedConfig.pacman,
-      session.speedConfig.ghost,
+      session.speedConfig.name || 'Unknown',
+      session.speedConfig.pacmanSpeed || 11,
+      session.speedConfig.ghostSpeed || 8.25,
       session.summary.totalGhostsEaten,
       session.summary.totalPelletsEaten,
       session.summary.totalDeaths,
@@ -855,7 +896,7 @@ class ExperimentManager {
       if (!existingCSV) {
         // First session - include headers
         const headers = [
-          'userId', 'sessionId', 'sessionType', 'permutationId', 'pacmanSpeed', 'ghostSpeed',
+          'userId', 'sessionId', 'sessionType', 'permutationId', 'sessionName', 'pacmanSpeed', 'ghostSpeed',
           'totalGhostsEaten', 'totalPelletsEaten', 'totalDeaths',
           'successfulTurns', 'totalTurns', 'gameTime', 'timestamp',
         ];
@@ -883,10 +924,11 @@ class ExperimentManager {
     return [
       session.userId,
       session.sessionId,
-      session.permutationId + 1, // Session type (1-9)
+      session.permutationId + 1, // Session type (1-6)
       session.permutationId,
-      session.speedConfig.pacman,
-      session.speedConfig.ghost,
+      session.speedConfig.name || 'Unknown',
+      session.speedConfig.pacmanSpeed || 11,
+      session.speedConfig.ghostSpeed || 8.25,
       session.summary.totalGhostsEaten,
       session.summary.totalPelletsEaten,
       session.summary.totalDeaths,

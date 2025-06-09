@@ -220,7 +220,7 @@ class GameCoordinator {
 
       // Check if user has completed all sessions
       const completedSessions = this.experimentManager.getCompletedSessionsCount();
-      if (completedSessions >= 9) {
+      if (completedSessions >= this.experimentManager.SESSION_CONFIGS.length) {
         // Show experiment complete message
         this.showExperimentCompleteMessage();
         return;
@@ -278,7 +278,7 @@ class GameCoordinator {
     if (userIdSection) {
       userIdSection.innerHTML = `
         <h3 class='experiment-title'>🎉 Experiment Complete! 🎉</h3>
-        <p class='experiment-description'>User "${this.experimentManager.userId}" has completed all 9 sessions.</p>
+        <p class='experiment-description'>User "${this.experimentManager.userId}" has completed all ${this.experimentManager.SESSION_CONFIGS.length} sessions.</p>
         <p class='experiment-description'>Thank you for participating in our research!</p>
         <div style="margin-top: 20px;">
           <button id="export-final-data" class="confirm-user-id-btn">Export Data</button>
@@ -1472,7 +1472,7 @@ class GameCoordinator {
     transitionOverlay.innerHTML = `
       <div style="text-align: center; padding: 40px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; border: 2px solid #4CAF50;">
         <h2 style="color: #4CAF50; margin-bottom: 20px;">Session ${completed} Complete!</h2>
-        <p style="margin: 15px 0;">Sessions completed: ${completed}/9</p>
+        <p style="margin: 15px 0;">Sessions completed: ${completed}/${this.experimentManager.SESSION_CONFIGS.length}</p>
         <p style="margin: 15px 0;">Sessions remaining: ${remaining}</p>
         <hr style="margin: 30px 0; border-color: #333;">
         <h3 style="color: #FFC107; margin-bottom: 15px;">Next Session Configuration:</h3>
@@ -1531,8 +1531,8 @@ class GameCoordinator {
     window.dispatchEvent(new CustomEvent('experimentComplete', {
       detail: {
         userId: this.experimentManager.userId,
-        completedSessions: 9,
-        totalSessions: 9,
+        completedSessions: this.experimentManager.SESSION_CONFIGS.length,
+        totalSessions: this.experimentManager.SESSION_CONFIGS.length,
         timestamp: Date.now(),
       },
     }));
@@ -1557,7 +1557,7 @@ class GameCoordinator {
     completionOverlay.innerHTML = `
       <div style="text-align: center; padding: 40px; background: rgba(255, 255, 255, 0.1); border-radius: 10px; border: 2px solid #4CAF50;">
         <h2 style="color: #4CAF50; margin-bottom: 20px;">🎉 Experiment Complete! 🎉</h2>
-        <p style="margin: 15px 0; font-size: 18px;">All 9 sessions completed successfully!</p>
+        <p style="margin: 15px 0; font-size: 18px;">All ${this.experimentManager.SESSION_CONFIGS.length} sessions completed successfully!</p>
         <p style="margin: 15px 0;">User ID: <strong>${this.experimentManager.userId}</strong></p>
         <hr style="margin: 30px 0; border-color: #333;">
         <h3 style="color: #FFC107; margin-bottom: 15px;">Thank you for participating!</h3>

@@ -136,7 +136,7 @@ class ExportManager {
         sessionOrder: this.experimentManager.sessionOrder,
         speedConfigurations: this.experimentManager.PERMUTATIONS,
         completedSessions: this.experimentManager.getCompletedSessionsCount(),
-        totalSessions: 9,
+        totalSessions: this.experimentManager.SESSION_CONFIGS.length,
       },
       sessions: this.experimentManager.metrics,
       analytics: this.sessionManager.getSessionAnalytics(),
@@ -871,7 +871,7 @@ print("Plots saved to pacman_analysis_plots.png")`;
   }
 
   assessDataCompleteness() {
-    const totalSessions = 9;
+    const totalSessions = this.experimentManager.SESSION_CONFIGS.length;
     const completedSessions = this.experimentManager.getCompletedSessionsCount();
 
     return {
@@ -891,7 +891,7 @@ print("Plots saved to pacman_analysis_plots.png")`;
       }
     });
 
-    return configCombinations.size === 9;
+    return configCombinations.size === this.experimentManager.SESSION_CONFIGS.length;
   }
 
   calculateDataQualityScore() {
